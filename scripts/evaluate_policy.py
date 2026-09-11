@@ -33,12 +33,26 @@ parser.add_argument("--gait", choices=GAITS, default="trot")
 parser.add_argument("--period", type=float, default=.48)
 parser.add_argument("--speed", type=float, default=.30)
 parser.add_argument("--step_widths", type=float, nargs="+", default=[.10, .20, .30, .40, .50])
+parser.add_argument(
+    "--deployment_profile", choices=("nominal", "randomized", "fixed_gains"),
+    default="nominal",
+    help="Plant/noise profile for deployment-policy validation")
+parser.add_argument("--kp_scale", type=float)
+parser.add_argument("--kd_scale", type=float)
+parser.add_argument(
+    "--require_deployment_checkpoint", action="store_true",
+    help="Reject checkpoints not trained with the frozen deployment DR profile")
 AppLauncher.add_app_launcher_args(parser)
 args = parser.parse_args()
 if args.dfs is None:
     args.dfs = [.75] if args.gait == "walk" else [.50, .625, .75]
 if args.num_envs < 1:
     parser.error("--num_envs must be positive")
+if args.deployment_profile == "fixed_gains":
+    if args.kp_scale is None or args.kd_scale is None:
+        parser.error("fixed_gains requires both --kp_scale and --kd_scale")
+elif args.kp_scale is not None or args.kd_scale is not None:
+    parser.error("Gain scales are valid only with --deployment_profile fixed_gains")
 if not 0 <= args.stance_start_probability <= 1:
     parser.error("Stance-start probability must be in [0,1]")
 ticks = round(args.period / CONTROL_DT)
@@ -82,6 +96,15 @@ from beam_walking.experiment.analysis import (
     nominal_evaluation_source_hash, oldest_first_force_history,
 )
 from beam_walking.experiment.task import BeamEnv, BeamEnvCfg, BeamPPORunnerCfg, command
+from beam_walking.experiment.deployment import (
+    STANCE_START_PROBABILITY, TRAINING_ITERATIONS, TRAINING_NUM_ENVS,
+    deployment_profile, deployment_profile_sha256,
+    deployment_training_source_hash, validate_gain_scales,
+)
+from beam_walking.experiment.deployment_task import (
+    DeploymentBeamEnv, DeploymentBeamEnvCfg, motor_gain_event,
+)
+from beam_walking.experiment.stability import training_source_hash
 
 
 FORCE_THRESHOLDS_N = (2., 5., 10.)
@@ -192,7 +215,21 @@ def evaluate(env, wrapped, policy, provenance):
         "terminal_force_capture": "recorder_pre_reset",
         "scientific_role": "command_fidelity_prerequisite",
         "not_closed_loop_chi_evidence": True,
+        "topology_definition": "schedule_centered_unique_circular_events_v1",
+        "topology_event_tolerance_s": .02,
+        "topology_primary_threshold_n": 5.,
+        "topology_gate_aggregation": "mean_trial_cycle_fraction",
+        "topology_sensitivity_thresholds_are_diagnostic": True,
     }
+    if provenance.get("deployment_evaluation_profile") is not None:
+        manifest.update({
+            key: provenance[key] for key in (
+                "deployment_evaluation_profile", "deployment_training_required",
+                "deployment_training_verified", "deployment_profile",
+                "deployment_profile_sha256", "deployment_training_source_sha256",
+                "kp_scale", "kd_scale",
+            )
+        })
     (args.output / "evaluation_manifest.json").write_text(json.dumps(manifest, indent=2))
 
     matched_initial = None
@@ -265,7 +302,7 @@ def evaluate(env, wrapped, policy, provenance):
             finally:
                 if video_writer is not None:
                     video_writer.close()
-            archive = nominal_archive_payload(traces, {
+            archive_metadata = {
                 "schema": NOMINAL_SCHEMA,
                 "df": duty, "command_speed": args.speed,
                 "disturbed": False, "terrain": "flat_ground",
@@ -289,6 +326,13 @@ def evaluate(env, wrapped, policy, provenance):
                 "terminal_force_capture": "recorder_pre_reset",
                 "scientific_role": "command_fidelity_prerequisite",
                 "not_closed_loop_chi_evidence": True,
+                "topology_definition":
+                    "schedule_centered_unique_circular_events_v1",
+                "topology_event_tolerance_s": .02,
+                "topology_primary_threshold_n": 5.,
+                "topology_gate_aggregation":
+                    "mean_trial_cycle_fraction",
+                "topology_sensitivity_thresholds_are_diagnostic": True,
                 "period": args.period, "gait": args.gait,
                 "step_width": width,
                 "phase_offsets": np.asarray(GAIT_OFFSETS[GAITS.index(args.gait)]),
@@ -296,7 +340,27 @@ def evaluate(env, wrapped, policy, provenance):
                 "reset_plan": reset_plan,
                 "initial_root": initial_root,
                 "initial_joints": initial_joints,
-            })
+            }
+            if provenance.get("deployment_evaluation_profile") is not None:
+                archive_metadata.update({
+                    "deployment_evaluation_profile":
+                        provenance["deployment_evaluation_profile"],
+                    "deployment_training_required":
+                        provenance["deployment_training_required"],
+                    "deployment_training_verified":
+                        provenance["deployment_training_verified"],
+                    "deployment_profile": np.asarray(
+                        json.dumps(provenance["deployment_profile"], sort_keys=True)),
+                    "deployment_profile_sha256":
+                        provenance["deployment_profile_sha256"],
+                    "deployment_training_source_sha256":
+                        provenance["deployment_training_source_sha256"],
+                    "kp_scale": (np.nan if provenance["kp_scale"] is None
+                                 else provenance["kp_scale"]),
+                    "kd_scale": (np.nan if provenance["kd_scale"] is None
+                                 else provenance["kd_scale"]),
+                })
+            archive = nominal_archive_payload(traces, archive_metadata)
             np.savez_compressed(args.output / f"{stem}.npz", **archive)
             if temporary_video is not None:
                 success_trace = archive["success"][:, args.camera_env]
@@ -315,7 +379,7 @@ def evaluate(env, wrapped, policy, provenance):
         raise RuntimeError(
             f"Evaluation archive mismatch: missing={sorted(expected_names-actual_names)}, "
             f"extra={sorted(actual_names-expected_names)}")
-    (args.output / "evaluation_complete.json").write_text(json.dumps({
+    completion = {
         "complete": True, "schema": NOMINAL_SCHEMA,
         "conditions": len(expected_names), "trials_per_condition": n,
         "source_sha256": provenance["task_sha256"],
@@ -323,7 +387,17 @@ def evaluate(env, wrapped, policy, provenance):
         "evaluator_sha256": provenance["evaluator_sha256"],
         "training_provenance_sha256":
             provenance["training_provenance_sha256"],
-    }, indent=2))
+    }
+    if provenance.get("deployment_evaluation_profile") is not None:
+        completion.update({
+            key: provenance[key] for key in (
+                "deployment_evaluation_profile", "deployment_training_verified",
+                "deployment_profile_sha256", "deployment_training_source_sha256",
+                "kp_scale", "kd_scale",
+            )
+        })
+    (args.output / "evaluation_complete.json").write_text(
+        json.dumps(completion, indent=2))
 
 
 def main():
@@ -339,18 +413,29 @@ def main():
         ROOT / "source/beam_walking/beam_walking/experiment/analysis.py",
         ROOT / "source/beam_walking/beam_walking/experiment/task.py",
         ROOT / "source/beam_walking/beam_walking/experiment/protocol.py",
+        ROOT / "source/beam_walking/beam_walking/experiment/deployment.py",
+        ROOT / "source/beam_walking/beam_walking/experiment/deployment_task.py",
+        ROOT / "source/beam_walking/beam_walking/experiment/deployment_actuator.py",
     ):
         shutil.copy2(source, snapshot / source.name)
     (args.output / "capacity.json").write_text(json.dumps(capacity, indent=2))
 
-    cfg = BeamEnvCfg()
+    cfg = (BeamEnvCfg() if args.deployment_profile == "nominal"
+           else DeploymentBeamEnvCfg())
     cfg.scene.num_envs = args.num_envs
     cfg.seed = args.seed
     cfg.stance_start_probability = args.stance_start_probability
     cfg.sim.device = args.device or "cuda:0"
-    cfg.events.motor_gain_randomization = None
+    if args.deployment_profile == "fixed_gains":
+        kp_scale, kd_scale = validate_gain_scales(args.kp_scale, args.kd_scale)
+        cfg.events.motor_gain_randomization = motor_gain_event(
+            (kp_scale, kp_scale), (kd_scale, kd_scale))
+    elif args.deployment_profile == "nominal":
+        cfg.events.motor_gain_randomization = None
     cfg.recorders = EvaluationRecorderManagerCfg()
-    env = BeamEnv(cfg, render_mode="rgb_array" if args.video else None)
+    env_class = (BeamEnv if args.deployment_profile == "nominal"
+                 else DeploymentBeamEnv)
+    env = env_class(cfg, render_mode="rgb_array" if args.video else None)
     wrapped = None
     try:
         if args.stance_start_probability > 0:
@@ -376,6 +461,29 @@ def main():
             raise ValueError("Checkpoint training provenance.json is required")
         training_bytes = training_path.read_bytes()
         training = json.loads(training_bytes)
+        expected_profile = deployment_profile()
+        expected_profile_hash = deployment_profile_sha256()
+        current_deployment_source = deployment_training_source_hash(
+            ROOT, training_source_hash(ROOT))
+        deployment_training_verified = bool(
+            training.get("deployment_domain_randomization") is True
+            and training.get("deployment_profile") == expected_profile
+            and training.get("deployment_profile_sha256")
+                == expected_profile_hash
+            and training.get("training_source_sha256")
+                == current_deployment_source
+            and training.get("training_num_envs") == TRAINING_NUM_ENVS
+            and training.get("training_iterations_requested")
+                == TRAINING_ITERATIONS
+            and training.get("stance_start_probability")
+                == STANCE_START_PROBABILITY
+            and training.get("watcher_enabled") is True)
+        if ((args.require_deployment_checkpoint
+             or args.deployment_profile != "nominal")
+                and not deployment_training_verified):
+            raise ValueError(
+                "Deployment evaluation requires a checkpoint trained with the "
+                "frozen deployment DR profile")
         training_provenance_hash = hashlib.sha256(training_bytes).hexdigest()
         (args.output / "training_provenance.json").write_bytes(training_bytes)
         if (
@@ -386,8 +494,20 @@ def main():
                 != training.get("training_iterations_requested", 0) - 1
         ):
             raise ValueError("Evaluation requires the final checkpoint from a fresh run")
+        if deployment_training_verified and (
+                saved.get("deployment_profile_schema")
+                    != expected_profile["schema"]
+                or saved.get("deployment_profile_sha256")
+                    != expected_profile_hash
+                or saved.get("training_source_sha256")
+                    != training.get("training_source_sha256")):
+            raise ValueError(
+                "Checkpoint metadata does not bind the frozen deployment profile")
         checkpoint_hash = hashlib.sha256(args.checkpoint.read_bytes()).hexdigest()
         evaluator_hash = nominal_evaluation_source_hash(ROOT)
+        deployment_evaluation = bool(
+            args.require_deployment_checkpoint
+            or args.deployment_profile != "nominal")
         provenance = {
             "mode": "evaluate", "split": args.split, "seed": args.seed,
             "argv": sys.argv, "terrain": "flat_ground",
@@ -406,6 +526,22 @@ def main():
                 for name in ("torch", "isaaclab", "isaacsim", "rsl-rl-lib")
             },
         }
+        if deployment_evaluation:
+            provenance.update({
+                "deployment_evaluation_profile": args.deployment_profile,
+                "deployment_training_required": True,
+                "deployment_training_verified": deployment_training_verified,
+                "deployment_profile": expected_profile,
+                "deployment_profile_sha256": expected_profile_hash,
+                "deployment_training_source_sha256":
+                    current_deployment_source,
+                "kp_scale": (float(args.kp_scale)
+                             if args.deployment_profile == "fixed_gains"
+                             else None),
+                "kd_scale": (float(args.kd_scale)
+                             if args.deployment_profile == "fixed_gains"
+                             else None),
+            })
         (args.output / "provenance.json").write_text(json.dumps(provenance, indent=2))
         evaluate(env, wrapped, runner.get_inference_policy(device=env.device), provenance)
     finally:

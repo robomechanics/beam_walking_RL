@@ -1,4 +1,5 @@
 """CPU-only tests for the paper-aligned closed-loop return-map metric."""
+import ast
 import hashlib
 import json
 import sys
@@ -11,16 +12,117 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "source/beam_walking"))
 from beam_walking.experiment.stability import (
-    AUGMENTED_DIM, FROZEN_GATE_LIMITS, PHYSICAL_DIM, PRIMARY_METRIC,
+    AUGMENTED_DIM, CONFIRMATORY_REFERENCE_SEED, FROZEN_GATE_LIMITS,
+    EVALUATION_SCRIPT_FILENAMES, EVALUATION_SOURCE_PATHS,
+    HYBRID_EVENT_TOLERANCE_S, PHYSICAL_DIM, PRIMARY_METRIC,
     RAW_STATE_DIM, STATE_SCALES, confirmatory_protocol,
     analyze_policy_ensemble, analyze_stability, apply_scaled_perturbation,
     canonical_condition_keys, canonical_physical_condition_keys,
     canonical_reference_states, command_fidelity, mechanical_cot,
     construct_master_stencil, contact_event_signature, estimate_maps,
     hybrid_topology_gate, paper_claim_summary, translation_symmetry_fidelity,
-    master_stencil_layout, quaternion_to_rotation_vector,
+    master_stencil_layout, numerical_fidelity, quaternion_to_rotation_vector,
+    STABILITY_SCHEMA, V4_STABILITY_SCHEMA, V5_ACTIVE_NUMERICAL_GATES,
+    V5_RETIRED_V4_GATE,
     rotation_vector_to_quaternion, state_delta,
+    zero_reproducibility_metrics, _energy_topology_gate,
 )
+
+
+class EvaluationSourceSnapshotTest(unittest.TestCase):
+    def test_every_hashed_evaluation_script_is_snapshotted(self):
+        hashed_scripts = {
+            Path(path).name for path in EVALUATION_SOURCE_PATHS
+            if Path(path).parts[0] == "scripts"
+        }
+        self.assertEqual(hashed_scripts, set(EVALUATION_SCRIPT_FILENAMES))
+        self.assertIn("evaluation_capacity.py", EVALUATION_SCRIPT_FILENAMES)
+
+    def test_stencil_cache_broadcasts_preserve_foot_axis(self):
+        source = (
+            Path(__file__).resolve().parents[1] / "scripts/stability_experiment.py"
+        ).read_text()
+        tree = ast.parse(source)
+        calls = [
+            node for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "repeat_interleave"
+        ]
+        # Settling, the exact finite-difference fork, and the zero-only
+        # reproducibility fork each broadcast both contact caches.
+        self.assertEqual(len(calls), 6)
+        for call in calls:
+            dimensions = [
+                keyword.value for keyword in call.keywords if keyword.arg == "dim"
+            ]
+            self.assertEqual(len(dimensions), 1)
+            self.assertIsInstance(dimensions[0], ast.Constant)
+            self.assertEqual(dimensions[0].value, 0)
+
+    def test_collector_does_not_assume_pre_step_failure_cache_exists(self):
+        source = (
+            Path(__file__).resolve().parents[1] / "scripts/stability_experiment.py"
+        ).read_text()
+        self.assertNotIn("env.substep_failure", source)
+
+    def test_zero_diagnostic_is_fail_closed_before_app_launch(self):
+        source = (
+            Path(__file__).resolve().parents[1] / "scripts/stability_experiment.py"
+        ).read_text()
+        pre_app = source[:source.index("app = AppLauncher(args).app")]
+        self.assertIn("args.zero_reproducibility_clones == 64", pre_app)
+        self.assertIn("args.enhanced_determinism", pre_app)
+        self.assertIn("args.seed == DEVELOPMENT_REFERENCE_SEED", pre_app)
+        self.assertIn(
+            "cfg.sim.physx.enable_enhanced_determinism = args.enhanced_determinism",
+            source)
+        self.assertIn("Identical fork produced unequal first actions", source)
+
+
+class ZeroReproducibilityTest(unittest.TestCase):
+    def payload(self):
+        desired = desired_trot_cycle()
+        states = np.broadcast_to(
+            base_state(), (1, 25, 3, RAW_STATE_DIM)).copy()
+        return dict(
+            states=states,
+            actions=np.zeros((1, 24, 3, 12)),
+            initial_contacts=np.broadcast_to(desired[-1], (1, 3, 4)).copy(),
+            substep_contacts=np.broadcast_to(
+                np.repeat(desired, 4, axis=0), (1, 3, 96, 4)).copy(),
+            desired_initial_contacts=desired[-1][None],
+            desired_substep_contacts=np.repeat(desired, 4, axis=0)[None],
+            settle_done=np.zeros(1, dtype=bool),
+            done=np.zeros((1, 24, 3), dtype=bool),
+            gait="trot", period=.48)
+
+    def test_identical_boundary_and_noise_failure(self):
+        values = self.payload()
+        result = zero_reproducibility_metrics(**values)
+        self.assertTrue(result["zero_reproducibility_pass"])
+        values["states"][0, -1, 1, 2] = .000125
+        self.assertTrue(zero_reproducibility_metrics(
+            **values)["zero_reproducibility_pass"])
+        values["states"][0, -1, 1, 2] = .000126
+        self.assertFalse(zero_reproducibility_metrics(
+            **values)["zero_reproducibility_pass"])
+
+    def test_termination_and_topology_mismatch_fail(self):
+        values = self.payload()
+        values["done"][0, 2, 1] = True
+        self.assertFalse(zero_reproducibility_metrics(
+            **values)["zero_reproducibility_pass"])
+        values = self.payload()
+        values["substep_contacts"][0, 1, 10, 0] ^= True
+        self.assertFalse(zero_reproducibility_metrics(
+            **values)["zero_reproducibility_pass"])
+
+    def test_malformed_and_nonfinite_reject(self):
+        values = self.payload()
+        values["states"][0, 0, 0, 2] = np.nan
+        with self.assertRaisesRegex(ValueError, "finite"):
+            zero_reproducibility_metrics(**values)
 
 
 def base_state():
@@ -85,7 +187,17 @@ TRAINING_PROVENANCE_BYTES = json.dumps(
 def manifest_for(names, conditions):
     energy_name = "energy_s0.300_d0.500_v0.300_trot_p0.48.npz"
     return {
-        "schema": "beam_stability_v3",
+        "schema": STABILITY_SCHEMA,
+        "hybrid_topology_definition":
+            "schedule_centered_unique_circular_events_v1",
+        "hybrid_event_tolerance_s": HYBRID_EVENT_TOLERANCE_S,
+        "hybrid_contact_threshold_n": 5.,
+        "stencil_fork_definition": "single_reference_exposed_state_v1",
+        "pre_restore_group_rms_is_diagnostic": True,
+        "immediate_restore_readback_required": True,
+        "active_v5_numerical_gates": list(V5_ACTIVE_NUMERICAL_GATES),
+        "retired_v4_numerical_gate": V5_RETIRED_V4_GATE,
+        "v5_claim_protocol_frozen": False,
         "external_pushes": False,
         "paper_metric_primary":
             "chi_orb=sigma_max(Phi_orbital_augmented_46D)",
@@ -94,7 +206,7 @@ def manifest_for(names, conditions):
         "unquotiented_full_48d_is_diagnostic": True,
         "translation_symmetry_residual_limit": .02,
         "gate_limits": FROZEN_GATE_LIMITS,
-        "evaluation_reference_seed": 10000,
+        "evaluation_reference_seed": CONFIRMATORY_REFERENCE_SEED,
         "state_scales": STATE_SCALES.tolist(),
         "references": 1,
         "zero_clones_per_reference": 2,
@@ -107,10 +219,11 @@ def manifest_for(names, conditions):
             "minimum_swing_s": .10,
         },
         "confirmatory_grid": False,
+        "candidate_confirmatory_grid": False,
         "initial_stencil_max_error_limit": 1e-3,
         "initial_condition_number_limit": 1.05,
         "zero_clone_noise_fraction_of_h_limit": .05,
-        "settle_group_rms_limit": 1e-3,
+        "retired_v4_settle_group_rms_limit": 1e-3,
         "task_sha256": "task",
         "evaluation_sha256": "evaluation",
         "checkpoint_sha256": "checkpoint",
@@ -171,6 +284,7 @@ def nominal_payload(matrix, h):
     initial_contacts = desired[-1]
     return {
         "initial_states": initial[None],
+        "requested_initial_states": initial[None].copy(),
         "final_states": final[None],
         "command": np.asarray([.3, .5, .3, .48, 0]),
         "perturbation_h": h,
@@ -190,6 +304,7 @@ def nominal_payload(matrix, h):
         "nominal_body_yaw_rate": np.zeros((1, 24)),
         "nominal_failure": np.zeros((1, 24), dtype=bool),
         "settle_group_rms": np.asarray([0.]),
+        "pre_restore_group_rms": np.asarray([0.]),
         "settle_done": np.asarray([False]),
         "zero_initial_states": np.repeat(initial[None, :1], 2, axis=1),
         "zero_final_states": np.repeat(final[None, :1], 2, axis=1),
@@ -298,7 +413,7 @@ class StabilityMetricTest(unittest.TestCase):
             "references": 8, "settle_cycles": 12,
             "perturbation_sizes": [.025, .05, .10],
             "zero_clones": 2, "master_stencil_size": 291,
-            "evaluation_reference_seed": 10000,
+            "evaluation_reference_seed": CONFIRMATORY_REFERENCE_SEED,
             "training_iterations_requested": 1800,
             "checkpoint_iteration": 1799,
             "fresh_training": True,
@@ -309,7 +424,7 @@ class StabilityMetricTest(unittest.TestCase):
             ("references", 1),
             ("settle_cycles", 4),
             ("perturbation_sizes", [.025, .05, .10, .15]),
-            ("evaluation_reference_seed", 10001),
+            ("evaluation_reference_seed", CONFIRMATORY_REFERENCE_SEED + 1),
             ("training_iterations_requested", 100),
             ("checkpoint_iteration", 1700),
             ("fresh_training", False),
@@ -351,6 +466,10 @@ class StabilityMetricTest(unittest.TestCase):
             base_state()[None, None], layout["size"], axis=1)
         settled[..., 0] = 9.
         settled[..., 1] = -4.
+        settled[0, 1:, 2] = np.linspace(
+            -.4, .4, layout["size"] - 1)
+        settled[0, 1:, 37] = np.linspace(
+            -.8, .8, layout["size"] - 1)
         master, layout = construct_master_stencil(
             settled, (.025, .05, .10), 2)
         for h, indices in layout["h_indices"].items():
@@ -364,6 +483,39 @@ class StabilityMetricTest(unittest.TestCase):
             self.assertNotEqual(measured[1, 0], measured[2, 0])
             self.assertNotEqual(measured[3, 1], measured[4, 1])
         np.testing.assert_allclose(master[0, 0], master[0, 1])
+        np.testing.assert_allclose(master[0, 0], master[0, 2])
+
+    def test_master_stencil_keeps_reference_groups_separate(self):
+        layout = master_stencil_layout((.025, .05, .10), 2)
+        settled = np.zeros((2, layout["size"], RAW_STATE_DIM))
+        settled[..., 3] = 1.
+        settled[0, 0, 2] = .31
+        settled[1, 0, 2] = .43
+        settled[0, 1:, 2] = 8.
+        settled[1, 1:, 2] = 9.
+        master, result_layout = construct_master_stencil(
+            settled, (.025, .05, .10), 2)
+        np.testing.assert_allclose(master[0, result_layout["zero_clones"], 2], .31)
+        np.testing.assert_allclose(master[1, result_layout["zero_clones"], 2], .43)
+        self.assertAlmostEqual(master[0, 0, 2], .31)
+        self.assertAlmostEqual(master[1, 0, 2], .43)
+
+    def test_v5_pre_restore_spread_is_diagnostic_after_exact_fork(self):
+        payload = nominal_payload(np.eye(AUGMENTED_DIM), .05)
+        payload["settle_group_rms"][:] = 9.
+        payload["pre_restore_group_rms"][:] = 9.
+        metrics = numerical_fidelity(
+            payload, 0, .05, {"schema": STABILITY_SCHEMA})
+        self.assertEqual(metrics["numerical_gate_pass"], 1)
+        self.assertEqual(metrics["pre_restore_group_rms"], 9.)
+
+    def test_v5_readback_mismatch_fails_numerical_gate(self):
+        payload = nominal_payload(np.eye(AUGMENTED_DIM), .05)
+        payload["requested_initial_states"][0, 0, 2] += .001
+        metrics = numerical_fidelity(
+            payload, 0, .05, {"schema": STABILITY_SCHEMA})
+        self.assertEqual(metrics["numerical_gate_pass"], 0)
+        self.assertGreater(metrics["restore_readback_max_error"], .001)
 
     def test_dense_nondiagonal_map_recovery(self):
         rng = np.random.default_rng(4)
@@ -424,6 +576,44 @@ class StabilityMetricTest(unittest.TestCase):
         payload["zero_substep_contacts"][:] = wrong[:, None]
         self.assertFalse(hybrid_topology_gate(payload, 0))
 
+    def test_stability_topology_accepts_circular_boundary_jitter(self):
+        payload = nominal_payload(np.eye(AUGMENTED_DIM), .05)
+        shifted = payload["desired_substep_contacts"][0].copy()
+        shifted[:, 0] = np.roll(shifted[:, 0], -4)
+        payload["stencil_substep_contacts"][:] = shifted
+        payload["zero_substep_contacts"][:] = shifted
+        payload["stencil_initial_contacts"][:] = shifted[-1]
+        payload["zero_initial_contacts"][:] = shifted[-1]
+        self.assertTrue(hybrid_topology_gate(payload, 0))
+        self.assertFalse(hybrid_topology_gate(payload, 0, legacy=True))
+        shifted[:, 0] = np.roll(
+            payload["desired_substep_contacts"][0, :, 0], -5)
+        payload["stencil_substep_contacts"][:] = shifted
+        payload["zero_substep_contacts"][:] = shifted
+        payload["stencil_initial_contacts"][:] = shifted[-1]
+        payload["zero_initial_contacts"][:] = shifted[-1]
+        self.assertFalse(hybrid_topology_gate(payload, 0))
+
+    def test_stability_topology_requires_one_initial_hybrid_mode(self):
+        payload = nominal_payload(np.eye(AUGMENTED_DIM), .05)
+        shifted = payload["desired_substep_contacts"][0].copy()
+        shifted[:, 0] = np.roll(shifted[:, 0], -4)
+        # The shifted clone is individually schedule-compliant, but it begins
+        # across the contact boundary from the baseline clone.
+        payload["stencil_substep_contacts"][0, 1] = shifted
+        payload["stencil_initial_contacts"][0, 1] = shifted[-1]
+        self.assertFalse(hybrid_topology_gate(payload, 0))
+
+    def test_energy_topology_uses_same_circular_matcher(self):
+        payload = energy_payload()
+        shifted = payload["substep_contacts"][0, 0].reshape(-1, 4)
+        shifted[:, 0] = np.roll(shifted[:, 0], -4)
+        payload["substep_contacts"][0, 0] = shifted.reshape(24, 4, 4)
+        payload["initial_contacts"][0, 0] = shifted[-1]
+        self.assertTrue(_energy_topology_gate(payload, 0))
+        payload["substep_contacts"][0, 0, 10, 0, 0] ^= True
+        self.assertFalse(_energy_topology_gate(payload, 0))
+
     def test_stance_width_ignores_swing_excursion(self):
         payload = nominal_payload(np.eye(AUGMENTED_DIM), .05)
         contacts = payload["nominal_contacts"][0]
@@ -442,10 +632,11 @@ class StabilityMetricTest(unittest.TestCase):
         self.assertEqual(metrics["command_gate_pass"], 0)
         self.assertGreater(metrics["heading_rmse_rad"], .10)
 
-    def _write_grid(self, directory, matrix=None, mutate=None):
+    def _write_grid(self, directory, matrix=None, mutate=None,
+                    perturbation_sizes=(.025, .05, .10)):
         matrix = np.eye(AUGMENTED_DIM) if matrix is None else matrix
         names, conditions = [], []
-        for h in (.025, .05, .10):
+        for h in perturbation_sizes:
             name = f"stability_cell_h{h:.3f}.npz"
             names.append(name)
             conditions.append(condition(name, h))
@@ -458,9 +649,56 @@ class StabilityMetricTest(unittest.TestCase):
         np.savez_compressed(
             directory / "energy_s0.300_d0.500_v0.300_trot_p0.48.npz",
             **energy_payload())
-        (directory / "stability_manifest.json").write_text(json.dumps(
-            manifest_for(names, conditions)))
+        manifest = manifest_for(names, conditions)
+        manifest["master_stencil_size"] = (
+            1 + 2 + len(perturbation_sizes) * 2 * AUGMENTED_DIM)
+        (directory / "stability_manifest.json").write_text(json.dumps(manifest))
         return names
+
+    def test_five_h_pilot_reports_all_adjacent_pairs_without_false_gates(self):
+        import pandas as pd
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            self._write_grid(
+                directory,
+                perturbation_sizes=(.005, .01, .025, .05, .10))
+            analyze_stability(directory)
+            pairs = pd.read_csv(directory / "finite_difference_pairs.csv")
+            self.assertEqual(
+                list(zip(pairs.h_low, pairs.h_high)),
+                [(.005, .01), (.01, .025), (.025, .05), (.05, .10)])
+            references = pd.read_csv(directory / "stability_references.csv")
+            evaluated = dict(zip(
+                references.perturbation_h,
+                references.finite_difference_gate_evaluated))
+            self.assertEqual(evaluated[.005], 0)
+            self.assertEqual(evaluated[.01], 0)
+            self.assertEqual(evaluated[.025], 1)
+            self.assertEqual(evaluated[.05], 1)
+            self.assertEqual(evaluated[.10], 1)
+
+    def test_requested_pair_shared_offset_cannot_cancel_in_validation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+
+            def shared_offset(payload, _h):
+                payload["requested_initial_states"][0, 1, 2] += .001
+                payload["requested_initial_states"][0, 2, 2] += .001
+
+            self._write_grid(directory, mutate=shared_offset)
+            with self.assertRaisesRegex(ValueError, "requested stencil"):
+                analyze_stability(directory)
+
+    def test_pre_restore_spread_alias_must_match(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+
+            def mismatch(payload, _h):
+                payload["pre_restore_group_rms"][:] = .5
+
+            self._write_grid(directory, mutate=mismatch)
+            with self.assertRaisesRegex(ValueError, "spread fields"):
+                analyze_stability(directory)
 
     def test_force_rejected_then_complete_gated_grid_accepted(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -481,6 +719,28 @@ class StabilityMetricTest(unittest.TestCase):
             self.assertFalse(claims["claim_values_released"])
             self.assertEqual(
                 claims["status"], "suppressed_failed_validity_or_coverage_gate")
+
+    def test_v4_archives_are_ineligible_for_paper_claim_release(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            self._write_grid(directory)
+            manifest_path = directory / "stability_manifest.json"
+            manifest = json.loads(manifest_path.read_text())
+            manifest["schema"] = V4_STABILITY_SCHEMA
+            manifest.pop("stencil_fork_definition")
+            manifest.pop("pre_restore_group_rms_is_diagnostic")
+            manifest.pop("immediate_restore_readback_required")
+            manifest.pop("active_v5_numerical_gates")
+            manifest.pop("retired_v4_numerical_gate")
+            manifest.pop("v5_claim_protocol_frozen")
+            manifest.pop("candidate_confirmatory_grid")
+            manifest["settle_group_rms_limit"] = manifest.pop(
+                "retired_v4_settle_group_rms_limit")
+            manifest_path.write_text(json.dumps(manifest))
+            analyze_stability(directory)
+            claims = json.loads((directory / "paper_claims.json").read_text())
+            self.assertFalse(claims["schema_eligible_for_claims"])
+            self.assertFalse(claims["claim_values_released"])
 
     def test_tampered_confirmatory_manifest_flag_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -652,7 +912,11 @@ class StabilityMetricTest(unittest.TestCase):
                 directory.mkdir()
                 directories.append(directory)
                 manifest = {
-                    "schema": "beam_stability_v3",
+                    "schema": STABILITY_SCHEMA,
+                    "hybrid_topology_definition":
+                        "schedule_centered_unique_circular_events_v1",
+                    "hybrid_event_tolerance_s": HYBRID_EVENT_TOLERANCE_S,
+                    "hybrid_contact_threshold_n": 5.,
                     "task_sha256": "task",
                     "evaluation_sha256": "evaluation",
                     "state_scales": STATE_SCALES.tolist(),
@@ -675,7 +939,7 @@ class StabilityMetricTest(unittest.TestCase):
                     "reference_initial_offset_half_width_normalized": .02,
                     "reference_initialization":
                         "canonical_default_plus_matched_offsets_v1",
-                    "evaluation_reference_seed": 10000,
+                    "evaluation_reference_seed": CONFIRMATORY_REFERENCE_SEED,
                     "training_source_sha256": "training-source",
                     "training_num_envs": 4096,
                     "training_iterations_requested": 1800,

@@ -17,13 +17,18 @@ from beam_walking.experiment.protocol import (
     CONTROL_DT, GAITS, MIN_SWING_STEPS, PERIOD_TICKS, leg_phase,
 )
 from beam_walking.experiment.stability import (
-    AUGMENTED_DIM, CONFIRMATORY_TRAINING_ITERATIONS, ENERGY_MEASUREMENT_CYCLES,
-    ENERGY_SCHEMA, FROZEN_GATE_LIMITS, PHYSICS_DT,
+    AUGMENTED_DIM, DEVELOPMENT_REFERENCE_SEED,
+    CONFIRMATORY_TRAINING_ITERATIONS, ENERGY_MEASUREMENT_CYCLES,
+    ENERGY_SCHEMA, EVALUATION_SCRIPT_FILENAMES, FROZEN_GATE_LIMITS,
+    HYBRID_EVENT_TOLERANCE_S, PHYSICS_DT,
     ORBITAL_AUGMENTED_INDICES, RAW_STATE_DIM, STATE_SCALES,
+    STABILITY_SCHEMA, V5_ACTIVE_NUMERICAL_GATES, V5_RETIRED_V4_GATE,
     canonical_physical_condition_keys, canonical_reference_states,
     confirmatory_protocol,
     construct_master_stencil, evaluation_source_hash, master_stencil_layout,
-    mechanical_cot, state_delta, training_source_hash,
+    individual_stencil_max_error, mechanical_cot, state_delta,
+    training_source_hash, validate_zero_reproducibility_archive,
+    zero_reproducibility_metrics,
 )
 from isaaclab.app import AppLauncher
 
@@ -43,12 +48,17 @@ parser.add_argument(
     "--gaits", "--gait", choices=GAITS, nargs="+", default=list(GAITS))
 parser.add_argument(
     "--periods", "--period", type=float, nargs="+", default=[.48])
-parser.add_argument("--seed", type=int, default=10000)
+parser.add_argument("--seed", type=int, default=DEVELOPMENT_REFERENCE_SEED)
+parser.add_argument("--zero_reproducibility_clones", type=int, default=0)
+parser.add_argument("--enhanced_determinism", action="store_true")
 AppLauncher.add_app_launcher_args(parser)
 args = parser.parse_args()
 
 if args.references < 1 or args.settle_cycles < 4:
     parser.error("Use at least one reference and four settling cycles")
+if args.zero_reproducibility_clones not in (0,) and not (
+        3 <= args.zero_reproducibility_clones <= 128):
+    parser.error("Zero reproducibility mode requires 3-128 clones")
 if any(not np.isfinite(h) or h <= 0 or h > .2 for h in args.perturbation_sizes):
     parser.error("Perturbation sizes must be finite and in (0, 0.2]")
 if len(set(args.perturbation_sizes)) != len(args.perturbation_sizes):
@@ -92,12 +102,32 @@ def valid_condition(period, gait, duty):
 
 
 ZERO_CLONES = 2
+if args.zero_reproducibility_clones:
+    exact_zero_protocol = (
+        args.zero_reproducibility_clones == 64
+        and args.references == 1
+        and args.settle_cycles == 12
+        and args.enhanced_determinism
+        and args.seed == DEVELOPMENT_REFERENCE_SEED
+        and args.step_widths == [.30]
+        and args.dfs == [.625]
+        and args.speeds == [.30]
+        and args.gaits == ["trot"]
+        and args.periods == [.48]
+    )
+    if not exact_zero_protocol:
+        parser.error(
+            "Zero reproducibility requires the frozen 64-clone, one-reference, "
+            "12-cycle, enhanced-determinism seed-1100000 protocol at "
+            "width=.30, DF=.625, speed=.30, trot, period=.48")
 LAYOUT = master_stencil_layout(args.perturbation_sizes, ZERO_CLONES)
-MASTER_STENCIL = LAYOUT["size"]
+ZERO_REPRODUCIBILITY = args.zero_reproducibility_clones > 0
+MASTER_STENCIL = (
+    args.zero_reproducibility_clones if ZERO_REPRODUCIBILITY else LAYOUT["size"])
 num_envs = MASTER_STENCIL * args.references
 
-from gpu_capacity import check_capacity
-capacity = check_capacity("evaluate", num_envs, args.device or "cuda:0", False)
+from evaluation_capacity import check_evaluation_capacity
+capacity = check_evaluation_capacity(num_envs, args.device or "cuda:0", False)
 app = AppLauncher(args).app
 
 import torch
@@ -223,11 +253,12 @@ def settle_condition(env, wrapped, policy, speed, gait, period,
     ).reshape(num_envs, RAW_STATE_DIM)
     write_raw_states(env, torch.as_tensor(
         broadcast, device=env.device, dtype=torch.float32))
-    c.contact_cache[:] = c.contact_cache[refs].repeat_interleave(MASTER_STENCIL)
-    c.nonfoot_cache[:] = c.nonfoot_cache[refs].repeat_interleave(MASTER_STENCIL)
+    c.contact_cache[:] = c.contact_cache[refs].repeat_interleave(
+        MASTER_STENCIL, dim=0)
+    c.nonfoot_cache[:] = c.nonfoot_cache[refs].repeat_interleave(
+        MASTER_STENCIL, dim=0)
     c.phase_ticks[:] = 0
     env.episode_length_buf[:] = 0
-    env.substep_failure[:] = False
     obs = wrapped.get_observations()
 
     phase_states = []
@@ -339,21 +370,50 @@ def collect_condition(env, wrapped, policy, period_ticks, settled_result):
     settled, cycle_rms, settle_group_rms, settle_done, _ = settled_result
     master, layout = construct_master_stencil(
         settled, args.perturbation_sizes, ZERO_CLONES)
+    for reference in range(args.references):
+        for h, local in layout["h_indices"].items():
+            error = individual_stencil_max_error(master[reference, local], h)
+            if error > FROZEN_GATE_LIMITS["initial_stencil_max_error"]:
+                raise RuntimeError(
+                    f"Requested stencil member error {error:.6g} exceeds "
+                    "the frozen tolerance")
+    c = command(env)
+    refs = reference_ids(env.device)
+    c.contact_cache[:] = c.contact_cache[refs].repeat_interleave(
+        MASTER_STENCIL, dim=0)
+    c.nonfoot_cache[:] = c.nonfoot_cache[refs].repeat_interleave(
+        MASTER_STENCIL, dim=0)
     write_raw_states(env, torch.as_tensor(
         master.reshape(num_envs, RAW_STATE_DIM),
         device=env.device, dtype=torch.float32))
-    c = command(env)
     if not bool(torch.all(c.phase_ticks == 0)):
         raise RuntimeError("Stability reference is not phase locked at zero")
+    intended = master
+    initial = raw_state(env).reshape(
+        args.references, MASTER_STENCIL, RAW_STATE_DIM).cpu().numpy()
+    readback_error = np.max(np.abs(
+        state_delta(intended, initial) / STATE_SCALES))
+    if readback_error > FROZEN_GATE_LIMITS["initial_stencil_max_error"]:
+        raise RuntimeError(
+            f"Immediate stability-state restore error {readback_error:.6g} "
+            "exceeds the frozen tolerance")
+    zero = layout["zero_clones"]
+    if not np.allclose(
+            state_delta(initial[:, :1], initial[:, zero]) / STATE_SCALES,
+            0., rtol=0., atol=FROZEN_GATE_LIMITS["initial_stencil_max_error"]):
+        raise RuntimeError("Zero clones do not match their reference after restore")
+    grouped_contacts = c.contact_cache.reshape(
+        args.references, MASTER_STENCIL, 4)
+    grouped_nonfoot = c.nonfoot_cache.reshape(args.references, MASTER_STENCIL)
+    if (not bool(torch.all(grouped_contacts == grouped_contacts[:, :1]))
+            or not bool(torch.all(grouped_nonfoot == grouped_nonfoot[:, :1]))):
+        raise RuntimeError("Contact caches were not broadcast within reference groups")
     initial_contacts = c.contact_cache.clone()
-    refs = reference_ids(env.device)
     initial_desired = (
         leg_phase(
             (c.phase_ticks[refs] - 1) % c.period_ticks[refs],
             c.period_ticks[refs], c.values[refs, 4].long())
         < c.values[refs, 1:2])
-    initial = raw_state(env).reshape(
-        args.references, MASTER_STENCIL, RAW_STATE_DIM).cpu().numpy()
     obs = wrapped.get_observations()
     done_latched = torch.zeros(
         num_envs, device=env.device, dtype=torch.bool)
@@ -402,6 +462,7 @@ def collect_condition(env, wrapped, policy, period_ticks, settled_result):
     common = {
         "cycle_rms": cycle_rms,
         "settle_group_rms": settle_group_rms,
+        "pre_restore_group_rms": settle_group_rms,
         "settle_done": settle_done,
         "nominal_contacts": np.stack(contact_trace, axis=1),
         "nominal_desired": np.stack(desired_trace, axis=1),
@@ -427,12 +488,122 @@ def collect_condition(env, wrapped, policy, period_ticks, settled_result):
         result[h] = {
             **common,
             "initial_states": initial[:, local],
+            "requested_initial_states": intended[:, local],
             "final_states": final[:, local],
             "done": done_master[:, local],
             "stencil_initial_contacts": initial_contact_master[:, local],
             "stencil_substep_contacts": contact_master[:, local],
         }
     return result
+
+
+@torch.inference_mode()
+def collect_zero_reproducibility(env, wrapped, policy, period_ticks,
+                                 settled_result):
+    """Measure divergence after an exact fork with no requested perturbation."""
+    settled, cycle_rms, pre_restore_group_rms, settle_done, _ = settled_result
+    intended = np.repeat(settled[:, :1], MASTER_STENCIL, axis=1)
+    intended[..., 0] = -.65
+    intended[..., 1] = 0.
+    c = command(env)
+    refs = reference_ids(env.device)
+    c.contact_cache[:] = c.contact_cache[refs].repeat_interleave(
+        MASTER_STENCIL, dim=0)
+    c.nonfoot_cache[:] = c.nonfoot_cache[refs].repeat_interleave(
+        MASTER_STENCIL, dim=0)
+    write_raw_states(env, torch.as_tensor(
+        intended.reshape(num_envs, RAW_STATE_DIM),
+        device=env.device, dtype=torch.float32))
+    if not bool(torch.all(c.phase_ticks == 0)):
+        raise RuntimeError("Zero reproducibility fork is not phase locked")
+    initial = raw_state(env).reshape(
+        args.references, MASTER_STENCIL, RAW_STATE_DIM).cpu().numpy()
+    readback_error = float(np.max(np.abs(
+        state_delta(intended, initial) / STATE_SCALES)))
+    if readback_error > FROZEN_GATE_LIMITS["initial_stencil_max_error"]:
+        raise RuntimeError("Zero reproducibility state restore failed")
+
+    states = [initial]
+    initial_contacts = c.contact_cache.reshape(
+        args.references, MASTER_STENCIL, 4).cpu().numpy()
+    contacts = [initial_contacts]
+    foot_forces = [env.scene["contact_forces"].data.net_forces_w[
+        :, c.sensor_feet].norm(dim=-1).reshape(
+            args.references, MASTER_STENCIL, 4).cpu().numpy()]
+    actions, applied_torque, done_trace, substep_contacts = [], [], [], []
+    desired_trace = []
+    obs = wrapped.get_observations()
+    initial_desired = (
+        leg_phase(
+            (c.phase_ticks[refs] - 1) % c.period_ticks[refs],
+            c.period_ticks[refs], c.values[refs, 4].long())
+        < c.values[refs, 1:2]).cpu().numpy()
+    env.capture_substeps = True
+    for tick in range(period_ticks):
+        action = policy(obs)
+        grouped_action = action.reshape(args.references, MASTER_STENCIL, 12)
+        action_error = float(torch.max(torch.abs(
+            grouped_action - grouped_action[:, :1])).cpu())
+        if tick == 0 and action_error > 1e-7:
+            raise RuntimeError(
+                f"Identical fork produced unequal first actions: {action_error:.6g}")
+        actions.append(grouped_action.cpu().numpy())
+        obs, _, done, _ = wrapped.step(action)
+        if len(env.substep_contacts) != env.cfg.decimation:
+            raise RuntimeError("Missing zero-diagnostic 200 Hz contact samples")
+        substep_contacts.append(
+            torch.stack(env.substep_contacts, dim=1).reshape(
+                args.references, MASTER_STENCIL, env.cfg.decimation, 4
+            ).cpu().numpy())
+        desired_trace.append(env.transition["desired"][refs].cpu().numpy())
+        done_trace.append(done.reshape(
+            args.references, MASTER_STENCIL).cpu().numpy())
+        states.append(raw_state(env).reshape(
+            args.references, MASTER_STENCIL, RAW_STATE_DIM).cpu().numpy())
+        contacts.append(c.contact_cache.reshape(
+            args.references, MASTER_STENCIL, 4).cpu().numpy())
+        foot_forces.append(env.scene["contact_forces"].data.net_forces_w[
+            :, c.sensor_feet].norm(dim=-1).reshape(
+                args.references, MASTER_STENCIL, 4).cpu().numpy())
+        applied_torque.append(env.scene["robot"].data.applied_torque.reshape(
+            args.references, MASTER_STENCIL, 12).cpu().numpy())
+    env.capture_substeps = False
+
+    states = np.stack(states, axis=1)
+    actions = np.stack(actions, axis=1)
+    done_trace = np.stack(done_trace, axis=1)
+    substep_contacts = np.concatenate(substep_contacts, axis=2)
+    desired_substeps = np.repeat(
+        np.stack(desired_trace, axis=1), env.cfg.decimation, axis=1)
+    metrics = zero_reproducibility_metrics(
+        states, actions, initial_contacts, substep_contacts,
+        initial_desired, desired_substeps, settle_done, done_trace,
+        gait=("trot", "walk")[int(c.values[refs[0], 4].item())],
+        period=float(c.values[refs[0], 3].item()))
+    finite_auxiliary = bool(
+        np.isfinite(np.stack(foot_forces, axis=1)).all()
+        and np.isfinite(np.stack(applied_torque, axis=1)).all())
+    metrics["finite_auxiliary_traces"] = finite_auxiliary
+    metrics["zero_reproducibility_pass"] = bool(
+        metrics["zero_reproducibility_pass"] and finite_auxiliary
+        and readback_error <= FROZEN_GATE_LIMITS["initial_stencil_max_error"])
+    return {
+        "states": states,
+        "actions": actions,
+        "contacts": np.stack(contacts, axis=1),
+        "initial_contacts": initial_contacts,
+        "substep_contacts": substep_contacts,
+        "desired_initial_contacts": initial_desired,
+        "desired_substep_contacts": desired_substeps,
+        "foot_force_norms_n": np.stack(foot_forces, axis=1),
+        "applied_torque": np.stack(applied_torque, axis=1),
+        "done": done_trace,
+        **metrics,
+        "restore_readback_max_error": readback_error,
+        "cycle_rms": cycle_rms,
+        "pre_restore_group_rms": pre_restore_group_rms,
+        "settle_done": settle_done,
+    }
 
 
 def main():
@@ -443,6 +614,7 @@ def main():
     cfg.scene.num_envs = num_envs
     cfg.seed = args.seed
     cfg.sim.device = args.device or "cuda:0"
+    cfg.sim.physx.enable_enhanced_determinism = args.enhanced_determinism
     cfg.events.motor_gain_randomization = None
     cfg.recorders = StabilityRecorderManagerCfg()
     env = BeamEnv(cfg)
@@ -502,6 +674,95 @@ def main():
     eval_hash = evaluation_source_hash(ROOT)
     policy = runner.get_inference_policy(device=env.device)
 
+    if ZERO_REPRODUCIBILITY:
+        factor_lists = (
+            args.step_widths, args.dfs, args.speeds, args.gaits, args.periods)
+        if args.references != 1 or any(len(values) != 1 for values in factor_lists):
+            raise ValueError(
+                "Zero reproducibility mode requires one reference and one condition")
+        period, gait = args.periods[0], args.gaits[0]
+        speed, width, duty = args.speeds[0], args.step_widths[0], args.dfs[0]
+        if not valid_condition(period, gait, duty):
+            raise ValueError("Zero reproducibility condition is not physically valid")
+        ticks = condition_period_ticks[period]
+        settled = settle_condition(
+            env, wrapped, policy, speed, gait, period, ticks, width, duty)
+        payload = collect_zero_reproducibility(
+            env, wrapped, policy, ticks, settled)
+        zero_limit = float(payload["zero_output_absolute_limit"])
+        final_max = float(payload[
+            "max_normalized_state_divergence_by_tick"][0, -1])
+        manifest = {
+            "schema": "zero_reproducibility_v1",
+            "scientific_role": "development_only_hidden_state_diagnostic",
+            "claim_values_released": False,
+            "not_chi_evidence": True, "not_cot_evidence": True,
+            "full_grid_authorized": False,
+            "terrain": "flat_ground", "external_pushes": False,
+            "enhanced_determinism": args.enhanced_determinism,
+            "clones": MASTER_STENCIL, "references": args.references,
+            "settle_cycles": args.settle_cycles,
+            "evaluation_reference_seed": args.seed,
+            "command": [speed, duty, width, period, GAITS.index(gait)],
+            "zero_output_absolute_limit_for_h_0.025": zero_limit,
+            "zero_output_limit_derivation": "0.05 * h_min=0.025",
+            "state_scales": STATE_SCALES.tolist(),
+            "control_dt_s": CONTROL_DT, "physics_dt_s": PHYSICS_DT,
+            "control_ticks": ticks,
+            "final_max_normalized_state_divergence": final_max,
+            "first_action_max_abs_difference": float(payload[
+                "max_action_divergence_by_tick"][0, 0]),
+            "first_action_tolerance": 1e-7,
+            "restore_readback_max_error": float(
+                payload["restore_readback_max_error"]),
+            "restore_readback_tolerance":
+                FROZEN_GATE_LIMITS["initial_stencil_max_error"],
+            "finite_auxiliary_traces": bool(
+                payload["finite_auxiliary_traces"]),
+            "settle_termination_present": bool(
+                payload["settle_termination_present"]),
+            "rollout_termination_present": bool(
+                payload["rollout_termination_present"]),
+            "all_clones_topology_valid": bool(
+                payload["topology_pass_by_clone"].all()),
+            "zero_reproducibility_pass": bool(
+                payload["zero_reproducibility_pass"]),
+            "initial_force_sample_semantics":
+                "pre_fork_cached_sensor_value_not_refreshed_after_state_write",
+            "applied_torque_semantics": "end_of_control_tick_not_200hz_trace",
+            "task_sha256": task_hash, "evaluation_sha256": eval_hash,
+            "checkpoint_sha256": checkpoint_hash,
+            "training_source_sha256": current_training_source,
+            "training_provenance_sha256": training_provenance_hash,
+            "capacity": capacity, "argv": sys.argv,
+        }
+        np.savez_compressed(
+            args.output / "zero_reproducibility.npz", **payload,
+            command=np.asarray([speed, duty, width, period, GAITS.index(gait)]),
+            state_scales=STATE_SCALES,
+            task_sha256=task_hash, evaluation_sha256=eval_hash,
+            checkpoint_sha256=checkpoint_hash)
+        (args.output / "zero_reproducibility_manifest.json").write_text(
+            json.dumps(manifest, indent=2))
+        (args.output / "training_provenance.json").write_bytes(
+            training_provenance_bytes)
+        shutil.copytree(
+            ROOT / "source/beam_walking/beam_walking/experiment",
+            args.output / "source_snapshot" / "experiment",
+            ignore=shutil.ignore_patterns("__pycache__"))
+        for filename in EVALUATION_SCRIPT_FILENAMES:
+            shutil.copy2(
+                ROOT / "scripts" / filename,
+                args.output / "source_snapshot" / filename)
+        validate_zero_reproducibility_archive(
+            args.output, require_complete=False)
+        (args.output / "ZERO_REPRODUCIBILITY_COMPLETE").write_text(
+            "development-only zero reproducibility diagnostic complete\n")
+        validate_zero_reproducibility_archive(args.output)
+        print("ZERO_REPRODUCIBILITY", json.dumps(manifest), flush=True)
+        wrapped.close()
+        return
+
     conditions = []
     energy_conditions = []
     for period in args.periods:
@@ -547,7 +808,17 @@ def main():
         raise RuntimeError("Cannot audit finite positive actuator effort limits")
     effort_limits_np = effort_limits.cpu().numpy()
     manifest = {
-        "schema": "beam_stability_v3",
+        "schema": STABILITY_SCHEMA,
+        "stencil_fork_definition": "single_reference_exposed_state_v1",
+        "pre_restore_group_rms_is_diagnostic": True,
+        "immediate_restore_readback_required": True,
+        "active_v5_numerical_gates": list(V5_ACTIVE_NUMERICAL_GATES),
+        "retired_v4_numerical_gate": V5_RETIRED_V4_GATE,
+        "v5_claim_protocol_frozen": False,
+        "hybrid_topology_definition":
+            "schedule_centered_unique_circular_events_v1",
+        "hybrid_event_tolerance_s": HYBRID_EVENT_TOLERANCE_S,
+        "hybrid_contact_threshold_n": 5.,
         "paper_metric_primary":
             "chi_orb=sigma_max(Phi_orbital_augmented_46D)",
         "primary_metric_scope":
@@ -555,7 +826,8 @@ def main():
         "unquotiented_full_48d_is_diagnostic": True,
         "single_policy_results_are_descriptive": True,
         "minimum_policies_for_claim": 5,
-        "confirmatory_grid": confirmatory_protocol(
+        "confirmatory_grid": False,
+        "candidate_confirmatory_grid": confirmatory_protocol(
             condition_keys=[
                 (item["period"], item["gait"], item["speed"],
                  item["step_width"], item["duty_factor"],
@@ -580,7 +852,7 @@ def main():
         "zero_clones_per_reference": ZERO_CLONES,
         "master_stencil_size": MASTER_STENCIL,
         "settle_cycles": args.settle_cycles,
-        "settle_group_rms_limit":
+        "retired_v4_settle_group_rms_limit":
             FROZEN_GATE_LIMITS["settle_group_rms"],
         "zero_clone_noise_fraction_of_h_limit":
             FROZEN_GATE_LIMITS["zero_clone_noise_fraction_of_h"],
@@ -652,10 +924,7 @@ def main():
         ROOT / "source/beam_walking/beam_walking/experiment",
         args.output / "source_snapshot" / "experiment",
         ignore=shutil.ignore_patterns("__pycache__"))
-    for filename in (
-        "stability_experiment.py", "analyze_stability.py",
-        "analyze_stability_ensemble.py", "gpu_capacity.py",
-    ):
+    for filename in EVALUATION_SCRIPT_FILENAMES:
         shutil.copy2(
             ROOT / "scripts" / filename,
             args.output / "source_snapshot" / filename)

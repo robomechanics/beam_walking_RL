@@ -15,6 +15,8 @@ from pathlib import Path
 
 import numpy as np
 
+from .analysis import schedule_centered_topology_fraction
+
 
 PHYSICAL_DIM = 36
 ACTION_DIM = 12
@@ -51,17 +53,27 @@ TRAINING_SOURCE_PATHS = (
     "scripts/gpu_capacity.py",
     "scripts/watch_training.py",
 )
+EVALUATION_SCRIPT_FILENAMES = (
+    "stability_experiment.py",
+    "analyze_stability.py",
+    "analyze_stability_ensemble.py",
+    "evaluation_capacity.py",
+    "gpu_capacity.py",
+)
 EVALUATION_SOURCE_PATHS = (
+    "source/beam_walking/beam_walking/experiment/analysis.py",
     "source/beam_walking/beam_walking/experiment/stability.py",
-    "scripts/stability_experiment.py",
-    "scripts/analyze_stability.py",
-    "scripts/analyze_stability_ensemble.py",
-    "scripts/gpu_capacity.py",
+    *(f"scripts/{filename}" for filename in EVALUATION_SCRIPT_FILENAMES),
 )
 
 
-CONFIRMATORY_REFERENCE_SEED = 10000
+DEVELOPMENT_REFERENCE_SEED = 1_100_000
+CONFIRMATORY_REFERENCE_SEED = 2_000_000
 CONFIRMATORY_TRAINING_ITERATIONS = 1800
+LEGACY_STABILITY_SCHEMA = "beam_stability_v3"
+V4_STABILITY_SCHEMA = "beam_stability_v4"
+STABILITY_SCHEMA = "beam_stability_v5"
+HYBRID_EVENT_TOLERANCE_S = .02
 ENERGY_SCHEMA = "positive_mechanical_cot_v1"
 ENERGY_MEASUREMENT_CYCLES = 4
 PHYSICS_DT = .005
@@ -88,6 +100,17 @@ FROZEN_GATE_LIMITS = {
     "global_condition_valid_rate": .90,
     "equivalence_ratio_margin": .20,
 }
+V5_ACTIVE_NUMERICAL_GATES = (
+    "initial_rank_equals_48",
+    "initial_condition_number_le_1.05",
+    "individual_requested_member_error_le_0.001",
+    "immediate_restore_readback_error_le_0.001",
+    "measured_central_stencil_error_le_0.001",
+    "zero_clone_input_error_le_0.001",
+    "zero_clone_output_noise_over_h_le_0.05",
+    "settle_terminated_equals_false",
+)
+V5_RETIRED_V4_GATE = "pre_restore_group_rms_le_0.001"
 
 
 def canonical_condition_keys():
@@ -336,11 +359,11 @@ def master_stencil_layout(perturbation_sizes, zero_clones=2):
 
 def construct_master_stencil(settled_states: np.ndarray, perturbation_sizes,
                              zero_clones=2, canonical_xy=(-.65, 0.)):
-    """Build simultaneous central stencils from per-member settled states.
+    """Fork one settled state per reference into a simultaneous central stencil.
 
-    Each member keeps its own settled simulator history. This function changes
-    only exposed state coordinates, using no-op canonical writes for baseline
-    and zero clones and one tangent perturbation for each +/- member.
+    Parallel simulator clones can drift during settling.  A finite-difference
+    column must contain only its requested perturbation, so every member is
+    rebuilt from member zero before the +/- offsets are applied.
     """
     settled_states = np.asarray(settled_states, dtype=np.float64)
     layout = master_stencil_layout(perturbation_sizes, zero_clones)
@@ -348,7 +371,7 @@ def construct_master_stencil(settled_states: np.ndarray, perturbation_sizes,
         layout["size"], RAW_STATE_DIM
     ):
         raise ValueError("Settled master states have the wrong shape")
-    result = settled_states.copy()
+    result = np.repeat(settled_states[:, :1], layout["size"], axis=1)
     result[..., 0] = canonical_xy[0]
     result[..., 1] = canonical_xy[1]
     for h, indices in layout["h_indices"].items():
@@ -383,6 +406,26 @@ def central_columns(initial_states: np.ndarray, final_states: np.ndarray) -> tup
         xf.append(0.5 * (state_delta(final_states[0], final_states[plus])
                          - state_delta(final_states[0], final_states[minus])) / STATE_SCALES)
     return np.stack(x0, axis=1), np.stack(xf, axis=1)
+
+
+def individual_stencil_max_error(states: np.ndarray, h: float) -> float:
+    """Return the largest error of any requested +/- member about its baseline."""
+    states = np.asarray(states, dtype=np.float64)
+    expected_shape = (1 + 2 * AUGMENTED_DIM, RAW_STATE_DIM)
+    if states.shape != expected_shape or not np.isfinite(states).all():
+        raise ValueError(f"Expected a finite stencil with shape {expected_shape}")
+    maximum = 0.
+    for coordinate in range(AUGMENTED_DIM):
+        target = np.zeros(AUGMENTED_DIM)
+        target[coordinate] = h
+        plus = state_delta(states[0], states[1 + 2 * coordinate]) / STATE_SCALES
+        minus = state_delta(states[0], states[2 + 2 * coordinate]) / STATE_SCALES
+        maximum = max(
+            maximum,
+            float(np.max(np.abs(plus - target))),
+            float(np.max(np.abs(minus + target))),
+        )
+    return maximum
 
 
 def fit_return_map(initial_columns: np.ndarray, final_columns: np.ndarray) -> dict:
@@ -582,7 +625,20 @@ def contact_event_signature(initial: np.ndarray, trace: np.ndarray):
     return tuple(signature)
 
 
-def hybrid_topology_gate(data: dict, reference: int) -> bool:
+def _schedule_topology_pass(initial, trace, desired_initial, desired_trace,
+                            gait, period) -> bool:
+    trace = np.asarray(trace, dtype=bool)
+    desired_trace = np.asarray(desired_trace, dtype=bool)
+    times = np.arange(1, len(trace) + 1, dtype=float) * PHYSICS_DT
+    fraction, good, eligible = schedule_centered_topology_fraction(
+        times, trace, desired_trace, gait, period=period,
+        sample_dt=PHYSICS_DT, tolerance=HYBRID_EVENT_TOLERANCE_S,
+        initial_contacts=initial, initial_desired=desired_initial,
+        circular=True)
+    return bool(eligible == 1 and good == 1 and fraction == 1.)
+
+
+def hybrid_topology_gate(data: dict, reference: int, *, legacy=False) -> bool:
     initial = np.asarray(data["stencil_initial_contacts"][reference], dtype=bool)
     trace = np.asarray(data["stencil_substep_contacts"][reference], dtype=bool)
     zero_initial = np.asarray(data["zero_initial_contacts"][reference], dtype=bool)
@@ -598,26 +654,187 @@ def hybrid_topology_gate(data: dict, reference: int) -> bool:
         or desired_trace.shape != trace.shape[1:]
     ):
         raise ValueError("Malformed 200 Hz stencil or desired contact traces")
-    expected = contact_event_signature(desired_initial, desired_trace)
-    baseline = contact_event_signature(initial[0], trace[0])
-    signatures = [
-        contact_event_signature(initial[index], trace[index])
-        for index in range(97)
-    ]
-    signatures += [
-        contact_event_signature(zero_initial[index], zero_trace[index])
+    if legacy:
+        expected = contact_event_signature(desired_initial, desired_trace)
+        baseline = contact_event_signature(initial[0], trace[0])
+        signatures = [
+            contact_event_signature(initial[index], trace[index])
+            for index in range(97)
+        ]
+        signatures += [
+            contact_event_signature(zero_initial[index], zero_trace[index])
+            for index in range(len(zero_initial))
+        ]
+        return (
+            np.array_equal(initial[0], desired_initial)
+            and baseline == expected
+            and all(signature == baseline for signature in signatures)
+        )
+    command = np.asarray(data["command"], dtype=float)
+    if command.shape != (5,) or int(round(command[4])) not in (0, 1):
+        raise ValueError("Malformed topology gait command")
+    gait = ("trot", "walk")[int(round(command[4]))]
+    period = float(command[3])
+    candidates = [(initial[index], trace[index]) for index in range(97)]
+    candidates += [
+        (zero_initial[index], zero_trace[index])
         for index in range(len(zero_initial))
     ]
-    return (
-        np.array_equal(initial[0], desired_initial)
-        and baseline == expected
-        and all(signature == baseline for signature in signatures)
-    )
+    # A finite-difference stencil must begin in one common hybrid mode.  Event
+    # times may move within the frozen tolerance, but mixing pre- and
+    # post-impact initial modes would make the fitted return map ill-defined.
+    if (not np.all(initial == initial[0])
+            or not np.all(zero_initial == initial[0])):
+        return False
+    return all(_schedule_topology_pass(
+        candidate_initial, candidate_trace, desired_initial, desired_trace,
+        gait, period) for candidate_initial, candidate_trace in candidates)
+
+
+def zero_reproducibility_metrics(
+        states, actions, initial_contacts, substep_contacts,
+        desired_initial_contacts, desired_substep_contacts, settle_done, done,
+        *, gait, period, h_min=.025):
+    """Validate and score an identical-clone return-map noise diagnostic."""
+    states, actions = np.asarray(states), np.asarray(actions)
+    initial_contacts = np.asarray(initial_contacts, dtype=bool)
+    substep_contacts = np.asarray(substep_contacts, dtype=bool)
+    desired_initial_contacts = np.asarray(desired_initial_contacts, dtype=bool)
+    desired_substep_contacts = np.asarray(desired_substep_contacts, dtype=bool)
+    settle_done, done = np.asarray(settle_done, dtype=bool), np.asarray(done, dtype=bool)
+    if states.ndim != 4 or states.shape[-1] != RAW_STATE_DIM or states.shape[2] < 3:
+        raise ValueError("Malformed zero-reproducibility states")
+    references, samples, clones, _ = states.shape
+    steps = samples - 1
+    expected = {
+        "actions": (references, steps, clones, ACTION_DIM),
+        "initial_contacts": (references, clones, 4),
+        "substep_contacts": (references, clones, steps * 4, 4),
+        "desired_initial_contacts": (references, 4),
+        "desired_substep_contacts": (references, steps * 4, 4),
+        "settle_done": (references,),
+        "done": (references, steps, clones),
+    }
+    values = locals()
+    for name, shape in expected.items():
+        if np.asarray(values[name]).shape != shape:
+            raise ValueError(f"Malformed zero-reproducibility {name}")
+    if not np.isfinite(states).all() or not np.isfinite(actions).all():
+        raise ValueError("Zero-reproducibility states/actions must be finite")
+    normalized = state_delta(states[:, :, :1], states) / STATE_SCALES
+    clone_delta = normalized[:, :, 1:]
+    max_abs = np.max(np.abs(clone_delta), axis=(-1, -2))
+    rms = np.sqrt(np.mean(
+        clone_delta[..., ORBITAL_AUGMENTED_INDICES] ** 2, axis=(-1, -2)))
+    action_max = np.max(
+        np.abs(actions[:, :, 1:] - actions[:, :, :1]), axis=(-1, -2))
+    topology = np.zeros((references, clones), dtype=bool)
+    for reference in range(references):
+        for clone in range(clones):
+            topology[reference, clone] = _schedule_topology_pass(
+                initial_contacts[reference, clone],
+                substep_contacts[reference, clone],
+                desired_initial_contacts[reference],
+                desired_substep_contacts[reference], gait, period)
+    limit = .05 * h_min
+    passed = bool(
+        not settle_done.any() and not done.any() and topology.all()
+        and np.all(action_max[:, 0] <= 1e-7)
+        and np.all(max_abs[:, -1] <= limit))
+    return {
+        "max_normalized_state_divergence_by_tick": max_abs,
+        "orbital_rms_state_divergence_by_tick": rms,
+        "max_action_divergence_by_tick": action_max,
+        "topology_pass_by_clone": topology,
+        "settle_termination_present": bool(settle_done.any()),
+        "rollout_termination_present": bool(done.any()),
+        "zero_output_absolute_limit": limit,
+        "zero_reproducibility_pass": passed,
+    }
+
+
+def validate_zero_reproducibility_archive(directory, *, require_complete=True):
+    """Fail closed on a persisted zero-reproducibility diagnostic."""
+    directory = Path(directory)
+    marker = directory / "ZERO_REPRODUCIBILITY_COMPLETE"
+    if require_complete and not marker.is_file():
+        raise ValueError("Zero-reproducibility completion marker is missing")
+    manifest = json.loads(
+        (directory / "zero_reproducibility_manifest.json").read_text())
+    if manifest.get("schema") != "zero_reproducibility_v1":
+        raise ValueError("Unsupported zero-reproducibility schema")
+    protocol = {
+        "scientific_role": "development_only_hidden_state_diagnostic",
+        "claim_values_released": False,
+        "not_chi_evidence": True,
+        "not_cot_evidence": True,
+        "full_grid_authorized": False,
+        "enhanced_determinism": True,
+        "clones": 64,
+        "references": 1,
+        "settle_cycles": 12,
+        "evaluation_reference_seed": DEVELOPMENT_REFERENCE_SEED,
+        "control_dt_s": .02,
+        "physics_dt_s": PHYSICS_DT,
+        "control_ticks": 24,
+        "zero_output_absolute_limit_for_h_0.025": .00125,
+        "zero_output_limit_derivation": "0.05 * h_min=0.025",
+    }
+    if any(manifest.get(key) != value for key, value in protocol.items()):
+        raise ValueError("Zero-reproducibility protocol identity mismatch")
+    with np.load(directory / "zero_reproducibility.npz") as archive:
+        data = {key: archive[key] for key in archive.files}
+    required = {
+        "states", "actions", "initial_contacts", "substep_contacts",
+        "desired_initial_contacts", "desired_substep_contacts", "settle_done",
+        "done", "foot_force_norms_n", "applied_torque", "command",
+        "state_scales", "task_sha256", "evaluation_sha256", "checkpoint_sha256",
+    }
+    if not required.issubset(data):
+        raise ValueError(f"Missing zero-reproducibility fields: {required-set(data)}")
+    for field in ("task_sha256", "evaluation_sha256", "checkpoint_sha256"):
+        if str(data[field]) != manifest[field]:
+            raise ValueError(f"Zero-reproducibility identity mismatch: {field}")
+    if not np.array_equal(data["state_scales"], STATE_SCALES):
+        raise ValueError("Zero-reproducibility state scales mismatch")
+    command = np.asarray(data["command"], dtype=float)
+    if command.shape != (5,) or not np.allclose(command, manifest["command"]):
+        raise ValueError("Zero-reproducibility command mismatch")
+    states, actions = data["states"], data["actions"]
+    expected_prefix = (
+        manifest["references"], manifest["control_ticks"] + 1,
+        manifest["clones"])
+    if states.shape != expected_prefix + (RAW_STATE_DIM,):
+        raise ValueError("Zero-reproducibility state shape mismatch")
+    if data["foot_force_norms_n"].shape != expected_prefix + (4,):
+        raise ValueError("Zero-reproducibility force shape mismatch")
+    action_prefix = (
+        manifest["references"], manifest["control_ticks"], manifest["clones"])
+    if actions.shape != action_prefix + (ACTION_DIM,):
+        raise ValueError("Zero-reproducibility action shape mismatch")
+    if data["applied_torque"].shape != action_prefix + (ACTION_DIM,):
+        raise ValueError("Zero-reproducibility torque shape mismatch")
+    if not np.isfinite(data["foot_force_norms_n"]).all() or not np.isfinite(
+            data["applied_torque"]).all():
+        raise ValueError("Zero-reproducibility auxiliary traces must be finite")
+    gait = ("trot", "walk")[int(round(command[4]))]
+    metrics = zero_reproducibility_metrics(
+        states, actions, data["initial_contacts"], data["substep_contacts"],
+        data["desired_initial_contacts"], data["desired_substep_contacts"],
+        data["settle_done"], data["done"], gait=gait, period=float(command[3]))
+    if metrics["zero_reproducibility_pass"] is not manifest[
+            "zero_reproducibility_pass"]:
+        raise ValueError("Zero-reproducibility persisted pass does not recompute")
+    provenance = (directory / "training_provenance.json").read_bytes()
+    if hashlib.sha256(provenance).hexdigest() != manifest[
+            "training_provenance_sha256"]:
+        raise ValueError("Zero-reproducibility provenance hash mismatch")
+    return metrics
 
 
 def numerical_fidelity(data: dict, reference: int, h: float,
                        manifest: dict) -> dict:
-    """Gate stencil writes, clone noise, group settling, rank, and conditioning."""
+    """Gate stencil writes, clone noise, rank, and conditioning."""
     initial = data["initial_states"][reference]
     final = data["final_states"][reference]
     x0, _ = central_columns(initial, final)
@@ -646,15 +863,27 @@ def numerical_fidelity(data: dict, reference: int, h: float,
     max_error_limit = FROZEN_GATE_LIMITS["initial_stencil_max_error"]
     condition_limit = FROZEN_GATE_LIMITS["initial_condition_number"]
     noise_limit = FROZEN_GATE_LIMITS["zero_clone_noise_fraction_of_h"]
-    settle_limit = FROZEN_GATE_LIMITS["settle_group_rms"]
     settle_group_rms = float(data["settle_group_rms"][reference])
+    common_fork = manifest.get("schema") == STABILITY_SCHEMA
+    if common_fork:
+        requested = np.asarray(
+            data["requested_initial_states"][reference], dtype=np.float64)
+        readback = state_delta(requested, initial) / STATE_SCALES
+        restore_readback_max_error = float(np.max(np.abs(readback)))
+        requested_member_max_error = individual_stencil_max_error(requested, h)
+    else:
+        restore_readback_max_error = float("nan")
+        requested_member_max_error = float("nan")
     passed = (
         rank == AUGMENTED_DIM
         and condition_number <= condition_limit
         and maximum_error <= max_error_limit
         and zero_input_max <= max_error_limit
         and noise_fraction <= noise_limit
-        and settle_group_rms <= settle_limit
+        and (not common_fork or restore_readback_max_error <= max_error_limit)
+        and (not common_fork or requested_member_max_error <= max_error_limit)
+        and (common_fork or settle_group_rms
+             <= FROZEN_GATE_LIMITS["settle_group_rms"])
         and not bool(data["settle_done"][reference])
     )
     return {
@@ -666,6 +895,9 @@ def numerical_fidelity(data: dict, reference: int, h: float,
         "zero_clone_output_max_error": zero_output_max,
         "zero_clone_noise_fraction_of_h": noise_fraction,
         "settle_group_rms": settle_group_rms,
+        "pre_restore_group_rms": settle_group_rms,
+        "restore_readback_max_error": restore_readback_max_error,
+        "requested_stencil_member_max_error": requested_member_max_error,
         "settle_terminated": int(data["settle_done"][reference]),
         "numerical_gate_pass": int(passed),
     }
@@ -950,6 +1182,11 @@ def _validate_archive(data: dict, expected: dict, manifest: dict):
     }
     if not required.issubset(data):
         raise ValueError(f"Missing stability fields: {sorted(required - set(data))}")
+    if manifest.get("schema") == STABILITY_SCHEMA:
+        v5_required = {"requested_initial_states", "pre_restore_group_rms"}
+        if not v5_required.issubset(data):
+            raise ValueError(
+                f"Missing V5 stability fields: {sorted(v5_required - set(data))}")
     forbidden = {"force", "planned_force", "push_plan"}.intersection(data)
     if forbidden:
         raise ValueError(
@@ -1003,9 +1240,23 @@ def _validate_archive(data: dict, expected: dict, manifest: dict):
         "stencil_initial_contacts": (references, 97, 4),
         "desired_initial_contacts": (references, 4),
     }
+    if manifest.get("schema") == STABILITY_SCHEMA:
+        expected_shapes.update({
+            "requested_initial_states": (references, 97, RAW_STATE_DIM),
+            "pre_restore_group_rms": (references,),
+        })
     for field, shape in expected_shapes.items():
         if data[field].shape != shape:
             raise ValueError(f"Malformed {field}: expected {shape}")
+    if manifest.get("schema") == STABILITY_SCHEMA:
+        if not np.array_equal(
+                data["pre_restore_group_rms"], data["settle_group_rms"]):
+            raise ValueError("V5 pre-restore spread fields disagree")
+        for reference in range(references):
+            if individual_stencil_max_error(
+                    data["requested_initial_states"][reference], h
+            ) > FROZEN_GATE_LIMITS["initial_stencil_max_error"]:
+                raise ValueError("V5 requested stencil members are malformed")
     if data["stencil_substep_contacts"].shape[:2] != (references, 97):
         raise ValueError("Malformed stencil substep contacts")
     if data["zero_substep_contacts"].shape[:2] != (references, zero_clones):
@@ -1055,6 +1306,8 @@ def _validate_archive(data: dict, expected: dict, manifest: dict):
         "nominal_forward_velocity", "nominal_lateral_position",
         "nominal_heading", "nominal_world_lateral_velocity",
         "nominal_body_yaw_rate")
+    if manifest.get("schema") == STABILITY_SCHEMA:
+        finite_fields += ("requested_initial_states", "pre_restore_group_rms")
     if any(not np.isfinite(data[field]).all() for field in finite_fields):
         raise ValueError("Stability nominal traces and settle metrics must be finite")
 
@@ -1184,7 +1437,12 @@ def _validate_energy_archive(data: dict, expected: dict, manifest: dict,
     return recomputed
 
 
-def _energy_topology_gate(data: dict, reference: int) -> bool:
+def _energy_topology_gate(data: dict, reference: int, *, legacy=False) -> bool:
+    command = np.asarray(data["command"], dtype=float)
+    if command.shape != (5,) or int(round(command[4])) not in (0, 1):
+        raise ValueError("Malformed energy gait command")
+    gait = ("trot", "walk")[int(round(command[4]))]
+    period = float(command[3])
     for cycle in range(ENERGY_MEASUREMENT_CYCLES):
         actual = np.asarray(
             data["substep_contacts"][reference, cycle], dtype=bool
@@ -1192,14 +1450,20 @@ def _energy_topology_gate(data: dict, reference: int) -> bool:
         desired = np.repeat(
             np.asarray(data["desired"][reference, cycle], dtype=bool),
             actual.shape[0] // data["desired"].shape[2], axis=0)
-        actual_signature = contact_event_signature(
-            data["initial_contacts"][reference, cycle], actual)
-        desired_signature = contact_event_signature(
-            data["initial_desired"][reference, cycle], desired)
-        if (not np.array_equal(
-                data["initial_contacts"][reference, cycle],
-                data["initial_desired"][reference, cycle])
-                or actual_signature != desired_signature):
+        if legacy:
+            actual_signature = contact_event_signature(
+                data["initial_contacts"][reference, cycle], actual)
+            desired_signature = contact_event_signature(
+                data["initial_desired"][reference, cycle], desired)
+            if (not np.array_equal(
+                    data["initial_contacts"][reference, cycle],
+                    data["initial_desired"][reference, cycle])
+                    or actual_signature != desired_signature):
+                return False
+        elif not _schedule_topology_pass(
+                data["initial_contacts"][reference, cycle], actual,
+                data["initial_desired"][reference, cycle], desired,
+                gait, period):
             return False
     return True
 
@@ -1258,7 +1522,9 @@ def analyze_energy(directory: str | Path, manifest: dict,
             fidelity = command_fidelity(
                 flattened, reference, condition["speed"],
                 condition["duty_factor"], condition["step_width"])
-            topology = _energy_topology_gate(data, reference)
+            topology = _energy_topology_gate(
+                data, reference,
+                legacy=manifest.get("schema") == LEGACY_STABILITY_SCHEMA)
             no_done = not bool(data["done"][reference].any())
             settled = bool(
                 not data["settle_done"][reference]
@@ -1327,8 +1593,36 @@ def analyze_stability(directory: str | Path) -> list[dict]:
     """Validate traces, estimate all maps, and write strictly gated summaries."""
     directory = Path(directory)
     manifest = json.loads((directory / "stability_manifest.json").read_text())
-    if manifest.get("schema") != "beam_stability_v3":
+    if manifest.get("schema") not in (
+            LEGACY_STABILITY_SCHEMA, V4_STABILITY_SCHEMA, STABILITY_SCHEMA):
         raise ValueError("Unsupported stability manifest schema")
+    current_topology = manifest.get("schema") in (
+        V4_STABILITY_SCHEMA, STABILITY_SCHEMA)
+    if current_topology:
+        topology_identity = {
+            "hybrid_topology_definition":
+                "schedule_centered_unique_circular_events_v1",
+            "hybrid_event_tolerance_s": HYBRID_EVENT_TOLERANCE_S,
+            "hybrid_contact_threshold_n": 5.,
+        }
+        if any(manifest.get(key) != value
+               for key, value in topology_identity.items()):
+            raise ValueError("Stability topology identity mismatch")
+    if manifest.get("schema") == STABILITY_SCHEMA:
+        fork_identity = {
+            "stencil_fork_definition": "single_reference_exposed_state_v1",
+            "pre_restore_group_rms_is_diagnostic": True,
+            "immediate_restore_readback_required": True,
+            "active_v5_numerical_gates": list(V5_ACTIVE_NUMERICAL_GATES),
+            "retired_v4_numerical_gate": V5_RETIRED_V4_GATE,
+            "v5_claim_protocol_frozen": False,
+        }
+        if any(manifest.get(key) != value
+               for key, value in fork_identity.items()):
+            raise ValueError("V5 common-reference fork identity mismatch")
+        if manifest.get("confirmatory_grid") is not False:
+            raise ValueError(
+                "V5 confirmatory flag must remain false until the protocol is frozen")
     if manifest.get("external_pushes") is not False:
         raise ValueError("Stability manifest must explicitly disable external pushes")
     if manifest.get("paper_metric_primary") != (
@@ -1404,7 +1698,6 @@ def analyze_stability(directory: str | Path) -> list[dict]:
     if manifest.get("gate_limits") != FROZEN_GATE_LIMITS:
         raise ValueError("Manifest numeric gate limits differ from frozen source")
     duplicate_limits = {
-        "settle_group_rms_limit": "settle_group_rms",
         "zero_clone_noise_fraction_of_h_limit":
             "zero_clone_noise_fraction_of_h",
         "initial_stencil_max_error_limit": "initial_stencil_max_error",
@@ -1412,12 +1705,21 @@ def analyze_stability(directory: str | Path) -> list[dict]:
         "translation_symmetry_residual_limit":
             "translation_symmetry_residual",
     }
+    if manifest.get("schema") == STABILITY_SCHEMA:
+        duplicate_limits["retired_v4_settle_group_rms_limit"] = (
+            "settle_group_rms")
+        if "settle_group_rms_limit" in manifest:
+            raise ValueError("V5 manifest labels the pre-restore spread gate as retired")
+    else:
+        duplicate_limits["settle_group_rms_limit"] = "settle_group_rms"
     if any(
         manifest.get(field) != FROZEN_GATE_LIMITS[key]
         for field, key in duplicate_limits.items()
     ):
         raise ValueError("Manifest duplicate numeric limits differ from source")
-    if manifest.get("evaluation_reference_seed") != CONFIRMATORY_REFERENCE_SEED:
+    if (manifest.get("schema") == STABILITY_SCHEMA
+            and manifest.get("evaluation_reference_seed")
+            != CONFIRMATORY_REFERENCE_SEED):
         # Exploratory runs may use another seed but can never be confirmatory.
         if manifest.get("confirmatory_grid"):
             raise ValueError(
@@ -1447,9 +1749,17 @@ def analyze_stability(directory: str | Path) -> list[dict]:
         checkpoint_iteration=manifest.get("checkpoint_iteration"),
         fresh_training=manifest.get("fresh_training"),
     )
-    if manifest.get("confirmatory_grid") is not recomputed_confirmatory:
-        raise ValueError(
-            "Manifest confirmatory flag differs from the frozen protocol")
+    if manifest.get("schema") == STABILITY_SCHEMA:
+        if manifest.get("candidate_confirmatory_grid") is not recomputed_confirmatory:
+            raise ValueError(
+                "Manifest candidate-confirmatory flag differs from the frozen protocol")
+    elif manifest.get("confirmatory_grid") is not recomputed_confirmatory:
+        # Historical V4 used seed 1,000,000 before the V5 estimator was designed.
+        # It remains readable but is permanently ineligible for claim release.
+        if not (manifest.get("schema") == V4_STABILITY_SCHEMA
+                and manifest.get("evaluation_reference_seed") == 1_000_000):
+            raise ValueError(
+                "Manifest confirmatory flag differs from the frozen protocol")
     expected_names = [item["filename"] for item in expected_conditions]
     if manifest.get("expected_files") != expected_names:
         raise ValueError("Manifest expected file list differs from structured conditions")
@@ -1507,8 +1817,8 @@ def analyze_stability(directory: str | Path) -> list[dict]:
                     data["cycle_rms"][reference] <= FROZEN_GATE_LIMITS["periodic_orbit_rms"]),
                 "terminated": int(
                     np.asarray(data["done"][reference]).any()),
-                "hybrid_topology_gate_pass": int(
-                    hybrid_topology_gate(data, reference)),
+                "hybrid_topology_gate_pass": int(hybrid_topology_gate(
+                    data, reference, legacy=not current_topology)),
             }
             base.update(command_fidelity(
                 data, reference, speed, duty, width))
@@ -1530,6 +1840,7 @@ def analyze_stability(directory: str | Path) -> list[dict]:
                 "finite_difference_full_matrix_error": np.nan,
                 "finite_difference_full_chi_error": np.nan,
                 "finite_difference_gate_pass": 0,
+                "finite_difference_gate_evaluated": 0,
                 "reference_valid": 0,
             })
             if not base["terminated"]:
@@ -1594,7 +1905,34 @@ def analyze_stability(directory: str | Path) -> list[dict]:
             row["period"], row["gait"], row["reference"])
         groups.setdefault(key, {})[round(row["perturbation_h"], 6)] = (
             row_index, maps)
-    for group in groups.values():
+    pair_rows = []
+    for key, group in groups.items():
+        ordered_h = sorted(group)
+        for low_h, high_h in zip(ordered_h[:-1], ordered_h[1:]):
+            low_row, low_maps = group[low_h]
+            high_row, high_maps = group[high_h]
+            low_primary = rows[low_row]["chi_orbital_augmented"]
+            high_primary = rows[high_row]["chi_orbital_augmented"]
+            low_full = rows[low_row]["chi_augmented"]
+            high_full = rows[high_row]["chi_augmented"]
+            pair_rows.append({
+                **dict(zip((
+                    "speed", "command_df", "step_width", "period", "gait",
+                    "reference"), key)),
+                "h_low": low_h,
+                "h_high": high_h,
+                "primary_matrix_relative_difference":
+                    relative_matrix_difference(
+                        low_maps["orbital"], high_maps["orbital"]),
+                "primary_chi_relative_difference": abs(
+                    high_primary - low_primary) /
+                    max(abs(low_primary), np.finfo(float).eps),
+                "full_matrix_relative_difference":
+                    relative_matrix_difference(
+                        low_maps["full"], high_maps["full"]),
+                "full_chi_relative_difference": abs(high_full - low_full) /
+                    max(abs(low_full), np.finfo(float).eps),
+            })
         if not all(h in group for h in (.025, .05, .10)):
             continue
         center_row, center_maps = group[.05]
@@ -1617,7 +1955,8 @@ def analyze_stability(directory: str | Path) -> list[dict]:
             / max(abs(full_chi), np.finfo(float).eps)
             for h in (.025, .10))
         passed = primary_matrix_error <= FROZEN_GATE_LIMITS["finite_difference_relative_error"] and primary_chi_error <= FROZEN_GATE_LIMITS["finite_difference_relative_error"]
-        for row_index, _ in group.values():
+        for h in (.025, .05, .10):
+            row_index, _ = group[h]
             rows[row_index].update({
                 "finite_difference_primary_matrix_error":
                     primary_matrix_error,
@@ -1625,7 +1964,21 @@ def analyze_stability(directory: str | Path) -> list[dict]:
                 "finite_difference_full_matrix_error": full_matrix_error,
                 "finite_difference_full_chi_error": full_chi_error,
                 "finite_difference_gate_pass": int(passed),
+                "finite_difference_gate_evaluated": 1,
             })
+
+    pair_fields = (
+        "speed", "command_df", "step_width", "period", "gait", "reference",
+        "h_low", "h_high", "primary_matrix_relative_difference",
+        "primary_chi_relative_difference", "full_matrix_relative_difference",
+        "full_chi_relative_difference",
+    )
+    with (directory / "finite_difference_pairs.csv").open(
+        "w", newline=""
+    ) as stream:
+        writer = csv.DictWriter(stream, fieldnames=pair_fields)
+        writer.writeheader()
+        writer.writerows(pair_rows)
 
     for row in rows:
         ranks_pass = (
@@ -1711,13 +2064,20 @@ def analyze_stability(directory: str | Path) -> list[dict]:
         writer = csv.DictWriter(stream, fieldnames=list(conditions[0]))
         writer.writeheader()
         writer.writerows(conditions)
+    schema_eligible = bool(
+        manifest.get("schema") == STABILITY_SCHEMA
+        and manifest.get("v5_claim_protocol_frozen") is True)
     claims = paper_claim_summary(
-        conditions, manifest.get("confirmatory_grid", False))
+        conditions,
+        manifest.get("confirmatory_grid", False) and schema_eligible)
+    claims["schema_eligible_for_claims"] = schema_eligible
     (directory / "paper_claims.json").write_text(
         json.dumps(_json_safe(claims), indent=2))
     energy_conditions = analyze_energy(directory, manifest, settle_identities)
     energy_claims = energy_claim_summary(
-        energy_conditions, manifest.get("confirmatory_grid", False))
+        energy_conditions,
+        manifest.get("confirmatory_grid", False) and schema_eligible)
+    energy_claims["schema_eligible_for_claims"] = schema_eligible
     (directory / "paper_energy_claims.json").write_text(
         json.dumps(_json_safe(energy_claims), indent=2))
     return summary
@@ -1752,6 +2112,9 @@ def analyze_policy_ensemble(directories, output: str | Path):
             directory / "paper_energy_conditions.csv").to_dict("records"))
         energy_claim_reports.append(json.loads(
             (directory / "paper_energy_claims.json").read_text()))
+    if any(manifest.get("schema") != STABILITY_SCHEMA
+           for manifest in manifests):
+        raise ValueError("Paper ensemble requires the current V5 stability schema")
     reference = manifests[0]
     identity_fields = (
         "schema", "task_sha256", "evaluation_sha256", "state_scales",

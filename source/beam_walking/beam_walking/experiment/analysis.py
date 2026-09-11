@@ -10,7 +10,8 @@ OFFSETS = (0., .5, .5, 0.)
 PERIOD = .48
 DT = .02
 LEGACY_NOMINAL_SCHEMA = "nominal_flat_gait_eval_v2"
-NOMINAL_SCHEMA = "nominal_flat_gait_eval_v3"
+V3_NOMINAL_SCHEMA = "nominal_flat_gait_eval_v3"
+NOMINAL_SCHEMA = "nominal_flat_gait_eval_v4"
 FORCE_THRESHOLDS_N = (2., 5., 10.)
 FORCE_SAMPLE_DT = .005
 FORCE_SAMPLES_PER_CONTROL = 4
@@ -20,6 +21,9 @@ NOMINAL_EVALUATOR_PATHS = (
     "scripts/analyze_beam.py",
     "source/beam_walking/beam_walking/experiment/analysis.py",
     "scripts/gpu_capacity.py",
+    "source/beam_walking/beam_walking/experiment/deployment.py",
+    "source/beam_walking/beam_walking/experiment/deployment_task.py",
+    "source/beam_walking/beam_walking/experiment/deployment_actuator.py",
 )
 
 
@@ -176,15 +180,172 @@ def topology_cycle_fraction(times, contacts, reference, gait, period=PERIOD,
     return (good / eligible if eligible else np.nan), good, eligible
 
 
+def schedule_centered_topology_fraction(
+        times, contacts, desired, gait, period=PERIOD,
+        sample_dt=FORCE_SAMPLE_DT, tolerance=DT, *,
+        initial_contacts=None, initial_desired=None, circular=False):
+    """Match observed contact events uniquely to scheduled gait events.
+
+    Events are owned by their nearest same-leg, same-direction scheduled event,
+    rather than by a fixed cycle interval.  This makes an event just before a
+    nominal cycle boundary belong to the event just after that boundary.  The
+    matching remains strict: missing, duplicate, late, or unmatched events fail
+    the affected cycle.  ``circular`` evaluates a one-period Poincare trace on
+    the phase circle and is used by the stability and energy evaluators.
+    """
+    ticks_float = np.asarray(times, dtype=float) / sample_dt
+    ticks = np.rint(ticks_float).astype(int)
+    count = round(period / sample_dt)
+    tolerance_ticks = round(tolerance / sample_dt)
+    contacts = np.asarray(contacts, dtype=bool)
+    desired = np.asarray(desired, dtype=bool)
+    if (count < 1 or not np.isclose(count * sample_dt, period)
+            or tolerance_ticks < 0
+            or not np.isclose(tolerance_ticks * sample_dt, tolerance)):
+        raise ValueError("Invalid topology period or event tolerance")
+    if (contacts.shape != desired.shape
+            or contacts.shape != (len(ticks), 4)
+            or not np.allclose(ticks_float, ticks, atol=1e-6)
+            or not np.array_equal(
+                np.diff(ticks), np.ones(max(0, len(ticks) - 1), dtype=int))):
+        raise ValueError(
+            "Topology inputs must be aligned contiguous four-leg contacts")
+    if gait not in ("trot", "walk"):
+        raise ValueError("Unsupported gait topology")
+    if circular and len(ticks) != count:
+        raise ValueError("Circular topology requires exactly one gait period")
+    if (initial_contacts is None) != (initial_desired is None):
+        raise ValueError("Both topology initial states must be supplied together")
+    if initial_contacts is not None:
+        initial_contacts = np.asarray(initial_contacts, dtype=bool)
+        initial_desired = np.asarray(initial_desired, dtype=bool)
+        if initial_contacts.shape != (4,) or initial_desired.shape != (4,):
+            raise ValueError("Topology initial contact states must have shape [4]")
+
+    def events(values, initial):
+        if initial is None:
+            current, previous, event_ticks = values[1:], values[:-1], ticks[1:]
+        else:
+            current, previous, event_ticks = values, np.concatenate(
+                [initial[None], values[:-1]], axis=0), ticks
+        changes = current != previous
+        return {
+            (leg, direction): event_ticks[
+                changes[:, leg] & (current[:, leg] == state)]
+            for leg in range(4)
+            for direction, state in (("rise", True), ("fall", False))
+        }
+
+    observed = events(contacts, initial_contacts)
+    expected = events(desired, initial_desired)
+
+    if circular:
+        # Express the trace on [0, count).  Circular distance assigns an event
+        # at the end of the period to the scheduled event at its beginning.
+        origin = ticks[0] - 1
+
+        def phase(value):
+            return (int(value) - origin) % count
+
+        def signed_distance(value, target):
+            delta = (phase(value) - phase(target)) % count
+            return delta - count if delta > count / 2 else delta
+
+        cycle_expected = {key: value for key, value in expected.items()}
+        if any(len(value) != 1 for value in cycle_expected.values()):
+            raise ValueError(
+                "Circular desired schedule must have one rise and fall per leg")
+        matched = {}
+        cycle_good = True
+        for key, targets in cycle_expected.items():
+            target = int(targets[0])
+            candidates = np.asarray(observed[key], dtype=int)
+            # Every observed event is owned by this sole circular event.
+            if len(candidates) != 1:
+                cycle_good = False
+                continue
+            delta = signed_distance(int(candidates[0]), target)
+            if abs(delta) > tolerance_ticks:
+                cycle_good = False
+            matched[key] = phase(target) + delta
+        cycles = [(0, cycle_expected, matched, cycle_good)]
+    else:
+        all_expected = np.concatenate(
+            [value for value in expected.values()]) if expected else np.asarray([])
+        if not len(all_expected):
+            return np.nan, 0, 0
+        first_cycle = int(np.floor((int(all_expected.min()) - 1) / count))
+        last_cycle = int(np.floor((int(all_expected.max()) - 1) / count))
+        cycles = []
+        for cycle in range(first_cycle, last_cycle + 1):
+            cycle_expected = {
+                key: value[((value - 1) // count) == cycle]
+                for key, value in expected.items()
+            }
+            if any(len(value) != 1 for value in cycle_expected.values()):
+                continue
+            # The first/last scheduled cycles need neighbouring same-direction
+            # events to own boundary jitter unambiguously.
+            if cycle <= first_cycle or cycle >= last_cycle:
+                continue
+            matched, cycle_good = {}, True
+            for key, targets in cycle_expected.items():
+                target = int(targets[0])
+                candidates = np.asarray(observed[key], dtype=int)
+                reference_events = np.asarray(expected[key], dtype=int)
+                owned = []
+                for candidate in candidates:
+                    distances = np.abs(reference_events - candidate)
+                    nearest = np.flatnonzero(distances == distances.min())
+                    # Attribute a midpoint tie to both neighbours so the
+                    # unmatched extra transition makes both cycles fail.
+                    if target in {int(reference_events[index])
+                                  for index in nearest}:
+                        owned.append(int(candidate))
+                if len(owned) != 1 or abs(owned[0] - target) > tolerance_ticks:
+                    cycle_good = False
+                elif len(owned) == 1:
+                    matched[key] = owned[0]
+            cycles.append((cycle, cycle_expected, matched, cycle_good))
+
+    good = 0
+    for _, scheduled, matched, initially_good in cycles:
+        cycle_good = initially_good and len(matched) == 8
+        if cycle_good and gait == "trot":
+            for event in ("rise", "fall"):
+                if (abs(matched[(0, event)] - matched[(3, event)])
+                        > tolerance_ticks
+                        or abs(matched[(1, event)] - matched[(2, event)])
+                        > tolerance_ticks):
+                    cycle_good = False
+        if cycle_good and gait == "walk":
+            for event in ("rise", "fall"):
+                observed_order = sorted(
+                    range(4), key=lambda leg: matched[(leg, event)])
+                scheduled_order = sorted(
+                    range(4), key=lambda leg: int(scheduled[(leg, event)][0]))
+                cyclic_orders = [
+                    scheduled_order[index:] + scheduled_order[:index]
+                    for index in range(4)]
+                if observed_order not in cyclic_orders:
+                    cycle_good = False
+        good += int(cycle_good)
+    eligible = len(cycles)
+    return (good / eligible if eligible else np.nan), good, eligible
+
+
 def validate_manifest(directory):
     """Reject missing cells, mixed checkpoints, and unmatched trial plans."""
     directory = Path(directory)
     manifest = json.loads((directory / "evaluation_manifest.json").read_text())
     schema = manifest.get("schema")
-    if schema not in (None, LEGACY_NOMINAL_SCHEMA, NOMINAL_SCHEMA):
+    if schema not in (
+            None, LEGACY_NOMINAL_SCHEMA, V3_NOMINAL_SCHEMA, NOMINAL_SCHEMA):
         raise ValueError(f"Unsupported evaluation manifest schema: {schema}")
-    versioned = schema in (LEGACY_NOMINAL_SCHEMA, NOMINAL_SCHEMA)
-    v3 = schema == NOMINAL_SCHEMA
+    versioned = schema in (
+        LEGACY_NOMINAL_SCHEMA, V3_NOMINAL_SCHEMA, NOMINAL_SCHEMA)
+    force_versioned = schema in (V3_NOMINAL_SCHEMA, NOMINAL_SCHEMA)
+    v4 = schema == NOMINAL_SCHEMA
     frame = manifest.get("step_width_frame", "world")
     if frame not in ("world", "body"):
         raise ValueError("Invalid manifest step_width_frame")
@@ -245,9 +406,53 @@ def validate_manifest(directory):
             "training_provenance_sha256":
                 manifest["training_provenance_sha256"],
         }
+        deployment_evaluation = manifest.get("deployment_evaluation_profile")
+        if deployment_evaluation is not None:
+            from .deployment import (
+                deployment_profile, deployment_profile_sha256,
+            )
+            required_deployment = (
+                "deployment_training_required", "deployment_training_verified",
+                "deployment_profile", "deployment_profile_sha256",
+                "deployment_training_source_sha256", "kp_scale", "kd_scale",
+            )
+            if any(key not in manifest for key in required_deployment):
+                raise ValueError("Deployment evaluation identity is incomplete")
+            if deployment_evaluation not in (
+                    "nominal", "randomized", "fixed_gains"):
+                raise ValueError("Unknown deployment evaluation profile")
+            if (manifest["deployment_training_required"] is not True
+                    or manifest["deployment_training_verified"] is not True
+                    or manifest["deployment_profile"] != deployment_profile()
+                    or manifest["deployment_profile_sha256"]
+                        != deployment_profile_sha256()):
+                raise ValueError("Frozen deployment profile identity mismatch")
+            if deployment_evaluation == "fixed_gains":
+                if (manifest["kp_scale"] is None
+                        or manifest["kd_scale"] is None):
+                    raise ValueError("Fixed-gain deployment identity is incomplete")
+            elif (manifest["kp_scale"] is not None
+                  or manifest["kd_scale"] is not None):
+                raise ValueError("Non-fixed deployment profile contains gains")
+            training = json.loads(provenance_path.read_text())
+            if (training.get("deployment_profile") != manifest["deployment_profile"]
+                    or training.get("deployment_profile_sha256")
+                        != manifest["deployment_profile_sha256"]
+                    or training.get("training_source_sha256")
+                        != manifest["deployment_training_source_sha256"]):
+                raise ValueError("Archived deployment training identity mismatch")
+            expected_complete.update({
+                key: manifest[key] for key in (
+                    "deployment_evaluation_profile",
+                    "deployment_training_verified",
+                    "deployment_profile_sha256",
+                    "deployment_training_source_sha256",
+                    "kp_scale", "kd_scale",
+                )
+            })
         if complete != expected_complete:
             raise ValueError("Versioned evaluation completion marker mismatch")
-    if v3:
+    if force_versioned:
         force_identity = {
             "force_instrumented": True,
             "force_field": "foot_force_norm_200hz", "force_units": "N",
@@ -264,7 +469,20 @@ def validate_manifest(directory):
         for key, expected in force_identity.items():
             if key not in manifest or not np.array_equal(
                     np.asarray(manifest[key]), np.asarray(expected)):
-                raise ValueError(f"V3 force metadata mismatch: {key}")
+                raise ValueError(f"Force metadata mismatch: {key}")
+        if v4:
+            topology_identity = {
+                "topology_definition":
+                    "schedule_centered_unique_circular_events_v1",
+                "topology_event_tolerance_s": DT,
+                "topology_primary_threshold_n": 5.,
+                "topology_gate_aggregation": "mean_trial_cycle_fraction",
+                "topology_sensitivity_thresholds_are_diagnostic": True,
+            }
+            for key, expected in topology_identity.items():
+                if key not in manifest or not np.array_equal(
+                        np.asarray(manifest[key]), np.asarray(expected)):
+                    raise ValueError(f"V4 topology metadata mismatch: {key}")
     reference, push_reference = None, None
     for cell in cells:
         path = directory / cell["filename"]
@@ -290,11 +508,43 @@ def validate_manifest(directory):
                 if forbidden:
                     raise ValueError(
                         f"Versioned nominal archive contains push fields: {sorted(forbidden)}")
-            if v3:
+                if manifest.get("deployment_evaluation_profile") is not None:
+                    deployment_identity = (
+                        "deployment_evaluation_profile",
+                        "deployment_training_required",
+                        "deployment_training_verified",
+                        "deployment_profile_sha256",
+                        "deployment_training_source_sha256",
+                    )
+                    for key in deployment_identity:
+                        if key not in data or data[key].item() != manifest[key]:
+                            raise ValueError(
+                                f"Deployment identity mismatch: {path.name}, {key}")
+                    if ("deployment_profile" not in data
+                            or json.loads(data["deployment_profile"].item())
+                                != manifest["deployment_profile"]):
+                        raise ValueError(
+                            f"Deployment profile mismatch: {path.name}")
+                    for key in ("kp_scale", "kd_scale"):
+                        saved = float(data[key])
+                        expected = manifest[key]
+                        if ((expected is None and not np.isnan(saved))
+                                or (expected is not None
+                                    and not np.isclose(saved, expected))):
+                            raise ValueError(
+                                f"Deployment gain mismatch: {path.name}, {key}")
+            if force_versioned:
                 for key in force_identity:
                     if key not in data or not np.array_equal(
                             np.asarray(data[key]), np.asarray(manifest[key])):
-                        raise ValueError(f"V3 force identity mismatch: {path.name}, {key}")
+                        raise ValueError(f"Force identity mismatch: {path.name}, {key}")
+                if v4:
+                    for key in topology_identity:
+                        if key not in data or not np.array_equal(
+                                np.asarray(data[key]),
+                                np.asarray(manifest[key])):
+                            raise ValueError(
+                                f"V4 topology identity mismatch: {path.name}, {key}")
                 valid = np.asarray(data["valid"], dtype=bool)
                 done = np.asarray(data["done"], dtype=bool)
                 forces = np.asarray(data[manifest["force_field"]])
@@ -427,7 +677,8 @@ def trial_rows(path):
         settled = t >= period
         stance = settled[:, None] & ct
         threshold_metrics = {}
-        if str(np.asarray(d.get("schema", "")).item()) == NOMINAL_SCHEMA:
+        archive_schema = str(np.asarray(d.get("schema", "")).item())
+        if archive_schema in (V3_NOMINAL_SCHEMA, NOMINAL_SCHEMA):
             force = np.asarray(d["foot_force_norm_200hz"])[mask, trial]
             high_times = (t[:, None] + FORCE_SAMPLE_DT * np.arange(
                 1 - FORCE_SAMPLES_PER_CONTROL, 1)[None, :]).reshape(-1)
@@ -437,15 +688,22 @@ def trial_rows(path):
                 threshold: (force > threshold).reshape(-1, 4)
                 for threshold in FORCE_THRESHOLDS_N
             }
-            reference_contacts = contacts_by_threshold[5.]
             for threshold in FORCE_THRESHOLDS_N:
                 tag = f"force{int(threshold)}n"
                 high_contacts = contacts_by_threshold[threshold]
                 last_contacts = force[:, -1] > threshold
-                topology_fraction, topology_good, topology_cycles = (
-                    topology_cycle_fraction(
-                        high_times, high_contacts, reference_contacts, gait,
-                        period=period))
+                if archive_schema == NOMINAL_SCHEMA:
+                    topology_fraction, topology_good, topology_cycles = (
+                        schedule_centered_topology_fraction(
+                            high_times, high_contacts, high_requested, gait,
+                            period=period))
+                else:
+                    # V3 remains reproducible under its archived fixed-bin,
+                    # 5 N reference definition.
+                    topology_fraction, topology_good, topology_cycles = (
+                        topology_cycle_fraction(
+                            high_times, high_contacts,
+                            contacts_by_threshold[5.], gait, period=period))
                 threshold_metrics[f"{tag}_topology_fraction"] = topology_fraction
                 threshold_metrics[f"{tag}_topology_good_cycles"] = topology_good
                 threshold_metrics[f"{tag}_topology_cycles"] = topology_cycles
@@ -570,6 +828,8 @@ def analyze(directory):
     import matplotlib.pyplot as plt
     directory = Path(directory)
     files = validate_manifest(directory)
+    manifest = json.loads((directory / "evaluation_manifest.json").read_text())
+    v4 = manifest.get("schema") == NOMINAL_SCHEMA
     table = pd.DataFrame([row for path in files for row in trial_rows(path)])
     for key in ["period", "gait", "command_speed", "step_width_frame"]:
         if table[key].nunique() != 1:
@@ -615,7 +875,7 @@ def analyze(directory):
             table[f"{tag}_df_max_abs_error"] = table[
                 [f"{tag}_df_{leg}" for leg in LEGS]
             ].sub(table.command_df, axis=0).abs().max(axis=1)
-            table[f"{tag}_compliance_pass"] = (
+            contact_pass = (
                 invariant_locomotion_pass & endpoint_pass
                 & table[[f"{tag}_cycles_{leg}" for leg in LEGS]].ge(1).all(axis=1)
                 & table[[f"{tag}_df_{leg}" for leg in LEGS]]
@@ -624,10 +884,13 @@ def analyze(directory):
                     .ge(.9).all(axis=1)
                 & table[[f"{tag}_stance_recall_{leg}" for leg in LEGS]]
                     .ge(.9).all(axis=1)
-                & table[f"{tag}_topology_fraction"].ge(.9)
                 & table[f"{tag}_{table.step_width_frame.iloc[0]}_foot_lateral_mae"].le(.015)
                 & (table[f"{tag}_{table.step_width_frame.iloc[0]}_achieved_width"]
                    - table.command_width).abs().le(.03))
+            table[f"{tag}_contact_pass"] = contact_pass
+            table[f"{tag}_compliance_pass"] = (
+                contact_pass if v4 else
+                contact_pass & table[f"{tag}_topology_fraction"].ge(.9))
         for leg in LEGS:
             threshold_columns = [
                 f"force{int(threshold)}n_df_{leg}"
@@ -681,6 +944,22 @@ def analyze(directory):
                     f"{tag}_{frame_name}_achieved_width"].mean()
                 record[f"{tag}_topology_fraction"] = group[
                     f"{tag}_topology_fraction"].mean()
+                topology_values = group[f"{tag}_topology_fraction"].to_numpy()
+                topology_bootstrap = topology_values[np.random.default_rng(
+                    8102026 + int(round(width * 1000))
+                    + int(round(df * 1000)) + int(threshold)
+                ).integers(len(topology_values), size=(10000, len(topology_values)))
+                ].mean(axis=1)
+                record[f"{tag}_topology_ci_low"] = float(
+                    np.quantile(topology_bootstrap, .025))
+                record[f"{tag}_topology_ci_high"] = float(
+                    np.quantile(topology_bootstrap, .975))
+                record[f"{tag}_topology_screen_pass"] = bool(
+                    record[f"{tag}_topology_fraction"] >= .9)
+                threshold_screen = bool(
+                    fraction >= .8 and (
+                        not v4 or record[f"{tag}_topology_screen_pass"]))
+                record[f"{tag}_threshold_screen_pass"] = threshold_screen
                 topology_good = int(group[f"{tag}_topology_good_cycles"].sum())
                 topology_cycles = int(group[f"{tag}_topology_cycles"].sum())
                 pooled_topology = (
@@ -706,22 +985,27 @@ def analyze(directory):
                         - group.command_width).abs().mean(),
                     "compliant_trial_fraction": fraction,
                     "topology_fraction": group[f"{tag}_topology_fraction"].mean(),
+                    "topology_ci_low": record[f"{tag}_topology_ci_low"],
+                    "topology_ci_high": record[f"{tag}_topology_ci_high"],
                     "topology_good_cycles": topology_good,
                     "topology_cycles": topology_cycles,
                     "pooled_topology_fraction": pooled_topology,
-                    "threshold_screen_pass": bool(fraction >= .8),
+                    "topology_screen_pass": bool(
+                        record[f"{tag}_topology_screen_pass"]),
+                    "threshold_screen_pass": threshold_screen,
                 })
-                threshold_screens.append(bool(fraction >= .8))
+                threshold_screens.append(threshold_screen)
             record["force_df_span_trial_fraction"] = group.force_df_span_pass.mean()
             record["force_robust_trial_fraction"] = group.force_robust_trial_pass.mean()
             record["force_threshold_conclusion_unchanged"] = bool(
-                all(value == record["force5n_compliance_screen_pass"]
+                all(value == record["force5n_threshold_screen_pass"]
                     for value in threshold_screens))
             record["force5n_200hz_vs_frozen50hz_unchanged"] = bool(
                 record["force5n_compliance_screen_pass"]
                 == record["compliance_screen_pass"])
-            record["combined_cell_pass"] = combined_cell_acceptance(
-                record, threshold_screens)
+            record["combined_cell_pass"] = (
+                combined_cell_acceptance_v4(record) if v4
+                else combined_cell_acceptance(record, threshold_screens))
         records.append(record)
     summary = pd.DataFrame(records)
     summary.to_csv(directory / "summary.csv", index=False)
@@ -754,15 +1038,17 @@ def analyze(directory):
             "success_difference": float(diffs.mean()), "ci_low": float(np.quantile(bootstrap, .025)),
             "ci_high": float(np.quantile(bootstrap, .975)), "bootstrap_degenerate": bool(np.ptp(bootstrap) == 0),
             "conservative_ci_low": high_ci[0] - low_ci[1], "conservative_ci_high": high_ci[1] - low_ci[0]})
-    is_v3 = json.loads((directory / "evaluation_manifest.json").read_text()).get(
-        "schema") == NOMINAL_SCHEMA
+    is_force_versioned = json.loads(
+        (directory / "evaluation_manifest.json").read_text()).get(
+        "schema") in (V3_NOMINAL_SCHEMA, NOMINAL_SCHEMA)
     contrast_name = (
-        "endpoint_success_diagnostics.json" if is_v3 else "paired_contrasts.json")
+        "endpoint_success_diagnostics.json"
+        if is_force_versioned else "paired_contrasts.json")
     (directory / contrast_name).write_text(json.dumps({
         "scientific_role": "command_fidelity_prerequisite",
         "not_closed_loop_chi_evidence": True,
         "contrasts": contrasts,
-    } if is_v3 else contrasts, indent=2))
+    } if is_force_versioned else contrasts, indent=2))
 
     def save(fig, name):
         fig.tight_layout()
@@ -781,7 +1067,8 @@ def analyze(directory):
         ax.set(title="Pushes" if disturbed else "Nominal", xlabel="Commanded DF",
                ylabel="Straight crossing success (95% Wilson CI)", ylim=(-.03, 1.03))
         ax.legend(title=f"{width_frame.title()}-axis step width")
-    save(fig, "endpoint_success_vs_df" if is_v3 else "success_vs_df")
+    save(fig, "endpoint_success_vs_df"
+         if is_force_versioned else "success_vs_df")
     fig, axes = plt.subplots(1, len(conditions), figsize=(5 * len(conditions), 3.8), squeeze=False)
     for ax, disturbed in zip(axes[0], conditions):
         grid = summary[summary.disturbed == disturbed].pivot(index="step_width", columns="command_df", values="success_rate")
@@ -865,6 +1152,19 @@ def nominal_study_readiness(trot_directory, walk_directory):
     ):
         if manifests[0][key] != manifests[1][key]:
             raise ValueError(f"Study provenance mismatch: {key}")
+    deployment_keys = (
+        "deployment_evaluation_profile", "deployment_training_required",
+        "deployment_training_verified", "deployment_profile",
+        "deployment_profile_sha256", "deployment_training_source_sha256",
+        "kp_scale", "kd_scale",
+    )
+    if any(key in manifest for manifest in manifests for key in deployment_keys):
+        if any(key not in manifest for manifest in manifests
+               for key in deployment_keys):
+            raise ValueError("Study deployment identity is incomplete")
+        for key in deployment_keys:
+            if manifests[0][key] != manifests[1][key]:
+                raise ValueError(f"Study deployment mismatch: {key}")
     validate_matched_study_resets(*reset_identities)
     expected = {
         ("trot", width, duty)
@@ -885,7 +1185,7 @@ def nominal_study_readiness(trot_directory, walk_directory):
             or not combined.n.eq(64).all()):
         raise ValueError("Study summaries must contain exactly 20 gated cells")
     passed = bool(combined.combined_cell_pass.astype(bool).all())
-    return {
+    readiness = {
         "ready": passed, "cells": 20,
         "passed_cells": int(combined.combined_cell_pass.astype(bool).sum()),
         "scientific_role": "command_fidelity_prerequisite",
@@ -893,6 +1193,9 @@ def nominal_study_readiness(trot_directory, walk_directory):
         "checkpoint_sha256": manifests[0]["checkpoint_sha256"],
         "evaluator_sha256": manifests[0]["evaluator_sha256"],
     }
+    if manifests[0].get("deployment_evaluation_profile") is not None:
+        readiness.update({key: manifests[0][key] for key in deployment_keys})
+    return readiness
 
 
 def validate_matched_study_resets(first, second):
@@ -918,3 +1221,16 @@ def combined_cell_acceptance(record, threshold_screens):
                 for threshold in FORCE_THRESHOLDS_N)
         and record["force_df_span_trial_fraction"] >= .9
         and record["force_robust_trial_fraction"] >= .8)
+
+
+def combined_cell_acceptance_v4(record):
+    """Apply the V4 prerequisite with the policy's 5 N contact as primary.
+
+    The 2 N and 10 N reconstructions remain threshold-sensitivity diagnostics;
+    they are correlated views of the same trials and are not multiplied into
+    the primary acceptance decision.
+    """
+    return bool(
+        record["compliance_screen_pass"]
+        and record["force5n_compliance_screen_pass"]
+        and record["force5n_topology_screen_pass"])

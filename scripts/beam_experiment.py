@@ -13,6 +13,9 @@ from beam_walking.experiment.protocol import (GAITS, GAIT_OFFSETS, PERIOD_TICKS,
     CYCLE_STEPS, MIN_SWING_STEPS, STEP_WIDTH_FRAME, validate_scientific_gait_duties,
     advance_phase_ticks)
 from beam_walking.experiment.stability import training_source_hash
+from beam_walking.experiment.deployment import (
+    STANCE_START_PROBABILITY, TRAINING_ITERATIONS, TRAINING_NUM_ENVS,
+)
 from isaaclab.app import AppLauncher
 
 parser = argparse.ArgumentParser()
@@ -28,6 +31,9 @@ parser.add_argument("--stance_start_probability", type=float, default=.10)
 parser.add_argument("--video", action="store_true")
 parser.add_argument("--no_watcher", action="store_true",
                     help="Disable the automatic read-only training watcher")
+parser.add_argument(
+    "--deployment_dr", action="store_true",
+    help="Train the frozen hardware-oriented dynamics/sensor randomization profile")
 parser.add_argument("--camera_env", type=int, default=0)
 parser.add_argument("--dfs", type=float, nargs="+")
 parser.add_argument("--gait", choices=GAITS, default="trot", help="Fixed gait for one evaluation grid")
@@ -43,6 +49,22 @@ if not 0. <= args.stance_start_probability <= 1.:
     parser.error("Stance-start probability must be in [0,1]")
 if args.mode == "benchmark" and args.iterations == 1800:
     args.iterations = 20
+if args.deployment_dr and args.mode == "evaluate":
+    parser.error("Use scripts/evaluate_policy.py for deployment robustness evaluation")
+if args.deployment_dr and args.checkpoint is not None:
+    parser.error("The first deployment-DR policy must be trained from scratch")
+if args.deployment_dr and args.mode == "train":
+    if args.num_envs != TRAINING_NUM_ENVS:
+        parser.error(
+            f"Deployment training requires exactly {TRAINING_NUM_ENVS} environments")
+    if args.iterations != TRAINING_ITERATIONS:
+        parser.error(
+            f"Deployment training requires exactly {TRAINING_ITERATIONS} updates")
+    if args.stance_start_probability != STANCE_START_PROBABILITY:
+        parser.error(
+            "Deployment training requires exactly 10% grounded stance starts")
+    if args.no_watcher:
+        parser.error("Deployment training requires the automatic watcher")
 period_ticks = round(args.period / CONTROL_DT)
 if period_ticks not in PERIOD_TICKS or abs(period_ticks * CONTROL_DT - args.period) > 1e-6:
     parser.error("Period must be 0.36-0.54 s in 0.02 s increments")
@@ -90,6 +112,14 @@ from rsl_rl.runners import OnPolicyRunner
 from isaaclab_rl.rsl_rl import RslRlVecEnvWrapper
 from isaaclab.utils.io import dump_yaml
 from beam_walking.experiment.task import BeamEnv, BeamEnvCfg, BeamPPORunnerCfg, command
+from beam_walking.experiment.deployment import (
+    deployment_profile, deployment_profile_sha256,
+    deployment_training_source_hash,
+)
+from beam_walking.experiment.deployment_task import (
+    DeploymentBeamEnv, DeploymentBeamEnvCfg, DeploymentBeamPPORunnerCfg,
+    deployment_runtime_summary,
+)
 
 active_env = None
 
@@ -106,26 +136,35 @@ def main():
         if source.exists():
             shutil.copy2(source, snapshot / filename)
     (args.output / "capacity.json").write_text(json.dumps(capacity, indent=2))
-    cfg = BeamEnvCfg()
+    cfg = DeploymentBeamEnvCfg() if args.deployment_dr else BeamEnvCfg()
     cfg.scene.num_envs = args.num_envs
     cfg.seed = args.seed
     cfg.stance_start_probability = args.stance_start_probability
     cfg.sim.device = args.device or "cuda:0"
     if args.mode == "evaluate":
         cfg.events.motor_gain_randomization = None
-    env = BeamEnv(cfg, render_mode="rgb_array" if args.video else None)
+    env_class = DeploymentBeamEnv if args.deployment_dr else BeamEnv
+    env = env_class(cfg, render_mode="rgb_array" if args.video else None)
     active_env = env
     if args.stance_start_probability > 0:
         try:
             env.calibrate_stance()
         except BaseException:
+            if hasattr(env, "deployment_calibration_diagnostics"):
+                (args.output / "deployment_calibration_diagnostics.json").write_text(
+                    json.dumps(
+                        env.deployment_calibration_diagnostics, indent=2))
             env.close()
             raise
         (args.output / "settled_stance.json").write_text(json.dumps(
             {key: value.detach().cpu().tolist() for key, value in env.settled_stance.items()}, indent=2))
+        if hasattr(env, "deployment_calibration_diagnostics"):
+            (args.output / "deployment_calibration_diagnostics.json").write_text(
+                json.dumps(env.deployment_calibration_diagnostics, indent=2))
     wrapped = RslRlVecEnvWrapper(env, clip_actions=5.)
     faulthandler.cancel_dump_traceback_later()
-    agent = BeamPPORunnerCfg()
+    agent = (DeploymentBeamPPORunnerCfg()
+             if args.deployment_dr else BeamPPORunnerCfg())
     agent.seed = args.seed
     agent.device = cfg.sim.device
     agent.max_iterations = args.iterations
@@ -142,8 +181,16 @@ def main():
         "training_source_sha256": training_source_hash(ROOT),
         "training_num_envs": args.num_envs,
         "training_iterations_requested": args.iterations,
+        "stance_start_probability": args.stance_start_probability,
         "checkpoint_selection_rule": "final_requested_iteration",
-        "watcher_enabled": bool(args.mode == "train" and not args.no_watcher)}
+        "watcher_enabled": bool(args.mode == "train" and not args.no_watcher),
+        "deployment_domain_randomization": bool(args.deployment_dr),
+        "deployment_profile": deployment_profile() if args.deployment_dr else None}
+    if args.deployment_dr:
+        metadata["base_training_source_sha256"] = metadata["training_source_sha256"]
+        metadata["training_source_sha256"] = deployment_training_source_hash(
+            ROOT, metadata["base_training_source_sha256"])
+        metadata["deployment_profile_sha256"] = deployment_profile_sha256()
     metadata["fresh_training"] = bool(
         args.mode == "train" and args.checkpoint is None)
     metadata["training_lineage_id"] = (
@@ -157,7 +204,13 @@ def main():
     (args.output / "provenance.json").write_text(json.dumps(metadata, indent=2))
     if args.mode == "smoke":
         env.capture = True
+        original_stance_probability = env.cfg.stance_start_probability
+        if args.deployment_dr:
+            env.cfg.stance_start_probability = 1.0
         obs, _ = wrapped.reset()
+        env.cfg.stance_start_probability = original_stance_probability
+        runtime_summary = (
+            deployment_runtime_summary(env) if args.deployment_dr else None)
         if obs["policy"].shape != (args.num_envs, 68):
             raise RuntimeError(
                 f"Expected 68 policy observations, got {obs['policy'].shape}")
@@ -166,20 +219,29 @@ def main():
                 f"Expected 12 joint-position actions, got "
                 f"{env.action_manager.action.shape}")
         robot = env.scene["robot"]
-        gain_ratios = []
+        kp_ratios, kd_ratios = [], []
         for actuator in robot.actuators.values():
             indices = actuator.joint_indices
             current_kp = actuator.stiffness
             current_kd = actuator.damping
             nominal_kp = robot.data.default_joint_stiffness[:, indices]
             nominal_kd = robot.data.default_joint_damping[:, indices]
-            gain_ratios.extend([
-                current_kp / nominal_kp,
-                current_kd / nominal_kd,
-            ])
-        gain_ratios = torch.cat(
-            [value.reshape(-1) for value in gain_ratios])
-        if not bool(torch.allclose(
+            kp_ratios.append(current_kp / nominal_kp)
+            kd_ratios.append(current_kd / nominal_kd)
+        kp_ratios = torch.cat([value.reshape(-1) for value in kp_ratios])
+        kd_ratios = torch.cat([value.reshape(-1) for value in kd_ratios])
+        gain_ratios = torch.cat([kp_ratios, kd_ratios])
+        if args.deployment_dr:
+            if (float(kp_ratios.min()) < .6 - 1e-6
+                    or float(kp_ratios.max()) > 1.4 + 1e-6
+                    or float(kd_ratios.min()) < .5 - 1e-6
+                    or float(kd_ratios.max()) > 1.5 + 1e-6
+                    or float(kp_ratios.std()) <= .01
+                    or float(kd_ratios.std()) <= .01):
+                raise RuntimeError(
+                    "Deployment gain randomization is outside its frozen range "
+                    "or did not vary across joints/environments")
+        elif not bool(torch.allclose(
                 gain_ratios, torch.ones_like(gain_ratios),
                 rtol=0., atol=1e-6)):
             raise RuntimeError("Paper-correlation run must use nominal Kp/Kd gains")
@@ -223,7 +285,7 @@ def main():
             if first_contacts is None:
                 first_contacts = env.transition["contacts"].sum(dim=1).cpu().tolist()
                 first_failures = env.transition["failure"].cpu().tolist()
-                if args.stance_start_probability == 1:
+                if args.deployment_dr or args.stance_start_probability == 1:
                     assert all(count == 4 for count in first_contacts), "Grounded reset did not start with four supported feet"
                     assert not any(first_failures), "Grounded reset spuriously failed"
         history = torch.stack(phase_tick_history[:CYCLE_STEPS])
@@ -250,7 +312,16 @@ def main():
             "high_rate_contact_reward_finite": True,
             "motor_gain_ratio_min": float(gain_ratios.min().cpu()),
             "motor_gain_ratio_max": float(gain_ratios.max().cpu()),
-            "motor_gain_randomization": False}, indent=2))
+            "motor_kp_ratio_min": float(kp_ratios.min().cpu()),
+            "motor_kp_ratio_max": float(kp_ratios.max().cpu()),
+            "motor_kd_ratio_min": float(kd_ratios.min().cpu()),
+            "motor_kd_ratio_max": float(kd_ratios.max().cpu()),
+            "motor_gain_randomization": bool(args.deployment_dr),
+            "deployment_profile": deployment_profile()
+                if args.deployment_dr else None,
+            "deployment_runtime_summary": runtime_summary,
+            "observation_corruption": bool(
+                cfg.observations.policy.enable_corruption)}, indent=2))
         print("SMOKE_OK", obs["policy"].shape, "feet", command(env).feet, flush=True)
     else:
         runner = OnPolicyRunner(wrapped, agent.to_dict(), log_dir=str(args.output), device=env.device)
@@ -275,7 +346,13 @@ def main():
             original_save = runner.save
             def save_with_progress(path, infos=None):
                 original_save(path, {"common_step_counter": env.common_step_counter,
-                    "task_sha256": metadata["task_sha256"]})
+                    "task_sha256": metadata["task_sha256"],
+                    "training_source_sha256": metadata["training_source_sha256"],
+                    "deployment_profile_schema": (
+                        metadata["deployment_profile"]["schema"]
+                        if args.deployment_dr else None),
+                    "deployment_profile_sha256": (
+                        metadata.get("deployment_profile_sha256"))})
             runner.save = save_with_progress
             # Random episode-length initialization would break synchronized reset/phase semantics.
             remaining = args.iterations - runner.current_learning_iteration

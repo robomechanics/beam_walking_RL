@@ -13,11 +13,12 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "source/beam_walking"))
 from beam_walking.experiment.analysis import (
-    LEGACY_NOMINAL_SCHEMA, NOMINAL_SCHEMA, analyze,
-    combined_cell_acceptance, complete_cycle_df,
+    LEGACY_NOMINAL_SCHEMA, NOMINAL_SCHEMA, V3_NOMINAL_SCHEMA, analyze,
+    combined_cell_acceptance, combined_cell_acceptance_v4, complete_cycle_df,
     include_post_step_video_frame, nominal_archive_payload,
     oldest_first_force_history, trial_rows,
-    topology_cycle_fraction, validate_manifest, validate_matched_study_resets,
+    schedule_centered_topology_fraction, topology_cycle_fraction,
+    validate_manifest, validate_matched_study_resets,
     wilson,
 )
 from beam_walking.experiment.protocol import leg_phase, contact_score, discrete_stance_fraction, GAIT_OFFSETS
@@ -132,6 +133,24 @@ class MetricsTest(unittest.TestCase):
         record["force10n_pooled_topology_fraction"] = .89
         self.assertFalse(combined_cell_acceptance(record, [True, True, True]))
 
+    def test_v4_primary_gate_does_not_multiply_sensitivity_thresholds(self):
+        record = {
+            "compliance_screen_pass": True,
+            "force5n_compliance_screen_pass": True,
+            "force5n_topology_screen_pass": True,
+            # These diagnostics deliberately fail.  Five newtons is the
+            # policy's operational contact definition and the V4 primary gate.
+            "force2n_threshold_screen_pass": False,
+            "force10n_threshold_screen_pass": False,
+        }
+        self.assertTrue(combined_cell_acceptance_v4(record))
+        for key in (
+                "compliance_screen_pass", "force5n_compliance_screen_pass",
+                "force5n_topology_screen_pass"):
+            changed = dict(record)
+            changed[key] = False
+            self.assertFalse(combined_cell_acceptance_v4(changed))
+
     def test_nominal_archive_separates_command_and_measured_speed(self):
         trace = np.asarray([.27, .31], dtype=np.float32)
         payload = nominal_archive_payload(
@@ -213,7 +232,7 @@ class MetricsTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "completion marker"):
                 validate_manifest(directory)
 
-    def test_v3_force_archive_identity_and_terminal_preservation(self):
+    def test_v4_force_archive_identity_and_terminal_preservation(self):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
             manifest = synthetic_run(directory, widths=(.3,), dfs=(.625,))
@@ -232,6 +251,13 @@ class MetricsTest(unittest.TestCase):
                 "terminal_force_capture": "recorder_pre_reset",
                 "scientific_role": "command_fidelity_prerequisite",
                 "not_closed_loop_chi_evidence": True,
+                "topology_definition":
+                    "schedule_centered_unique_circular_events_v1",
+                "topology_event_tolerance_s": .02,
+                "topology_primary_threshold_n": 5.,
+                "topology_gate_aggregation":
+                    "mean_trial_cycle_fraction",
+                "topology_sensitivity_thresholds_are_diagnostic": True,
             }
             manifest.update({
                 "schema": NOMINAL_SCHEMA, "speed": .30,
@@ -283,6 +309,27 @@ class MetricsTest(unittest.TestCase):
             self.assertTrue((directory / "force_threshold_summary.csv").is_file())
             self.assertTrue((directory / "endpoint_success_diagnostics.json").is_file())
 
+            # V3 archives retain their original fixed-bin interpretation and
+            # remain readable; V4 fields are neither required nor inferred.
+            topology_fields = [
+                "topology_definition", "topology_event_tolerance_s",
+                "topology_primary_threshold_n", "topology_gate_aggregation",
+                "topology_sensitivity_thresholds_are_diagnostic",
+            ]
+            manifest["schema"] = V3_NOMINAL_SCHEMA
+            payload["schema"] = np.asarray(V3_NOMINAL_SCHEMA)
+            complete["schema"] = V3_NOMINAL_SCHEMA
+            for key in topology_fields:
+                manifest.pop(key)
+                payload.pop(key)
+            np.savez_compressed(path, **payload)
+            (directory / "evaluation_manifest.json").write_text(
+                json.dumps(manifest))
+            (directory / "evaluation_complete.json").write_text(
+                json.dumps(complete))
+            self.assertEqual(validate_manifest(directory), [path])
+            self.assertEqual(len(trial_rows(path)), 3)
+
             payload["terminal_force_preserved"][-1, 0] = False
             np.savez_compressed(path, **payload)
             with self.assertRaisesRegex(ValueError, "Terminal force preservation"):
@@ -332,6 +379,72 @@ class MetricsTest(unittest.TestCase):
             fraction, _, _ = topology_cycle_fraction(
                 ticks.numpy() * .005, chatter, reference, gait)
             self.assertLess(fraction, 1.)
+
+    def test_schedule_centered_topology_owns_boundary_jitter(self):
+        count = 96
+        ticks = torch.arange(1, count * 6 + 1)
+        phase = leg_phase(
+            ticks, torch.full_like(ticks, count), torch.zeros_like(ticks)
+        ).numpy()
+        desired = phase < .5
+        candidate = desired.copy()
+        # Advance one scheduled FL rise from tick 385 to tick 381.  It belongs
+        # to that scheduled event, even though it crosses the fixed cycle bin.
+        candidate[380:384, 0] = True
+        fraction, good, eligible = schedule_centered_topology_fraction(
+            ticks.numpy() * .005, candidate, desired, "trot")
+        self.assertEqual(fraction, 1.)
+        self.assertEqual(good, eligible)
+
+    def test_schedule_centered_topology_rejects_duplicate_and_trot_desync(self):
+        count = 96
+        ticks = torch.arange(1, count * 6 + 1)
+        desired = leg_phase(
+            ticks, torch.full_like(ticks, count), torch.zeros_like(ticks)
+        ).numpy() < .5
+        chatter = desired.copy()
+        chatter[count * 3 + 20, 0] = ~chatter[count * 3 + 20, 0]
+        self.assertLess(schedule_centered_topology_fraction(
+            ticks.numpy() * .005, chatter, desired, "trot")[0], 1.)
+        desynchronized = desired.copy()
+        # Each diagonal touchdown is within 20 ms of schedule, while the two
+        # legs are 40 ms apart and must fail trot synchrony.
+        desynchronized[count * 3 - 4:count * 3, 0] = True
+        desynchronized[count * 3:count * 3 + 4, 3] = False
+        self.assertLess(schedule_centered_topology_fraction(
+            ticks.numpy() * .005, desynchronized, desired, "trot")[0], 1.)
+
+    def test_schedule_centered_topology_walk_order_and_circular_edges(self):
+        count = 96
+        ticks = torch.arange(1, count + 1)
+        desired_walk = leg_phase(
+            ticks, torch.full_like(ticks, count), torch.ones_like(ticks)
+        ).numpy() < .75
+        circular = desired_walk.copy()
+        circular[:, 0] = np.roll(circular[:, 0], -4)
+        fraction, good, eligible = schedule_centered_topology_fraction(
+            ticks.numpy() * .005, circular, desired_walk, "walk",
+            initial_contacts=circular[-1], initial_desired=desired_walk[-1],
+            circular=True)
+        self.assertEqual((fraction, good, eligible), (1., 1, 1))
+        swapped = desired_walk[:, [1, 0, 2, 3]]
+        fraction, _, _ = schedule_centered_topology_fraction(
+            ticks.numpy() * .005, swapped, desired_walk, "walk",
+            initial_contacts=swapped[-1], initial_desired=desired_walk[-1],
+            circular=True)
+        self.assertEqual(fraction, 0.)
+
+    def test_schedule_centered_topology_rejects_partial_and_missing_ticks(self):
+        ticks = np.arange(1, 96 * 2)
+        desired = leg_phase(
+            torch.tensor(ticks), torch.full((len(ticks),), 96),
+            torch.zeros(len(ticks), dtype=torch.long)).numpy() < .5
+        self.assertTrue(np.isnan(schedule_centered_topology_fraction(
+            ticks * .005, desired, desired, "trot")[0]))
+        with self.assertRaisesRegex(ValueError, "contiguous"):
+            schedule_centered_topology_fraction(
+                np.delete(ticks, 20) * .005, np.delete(desired, 20, axis=0),
+                np.delete(desired, 20, axis=0), "trot")
 
     def test_terminal_boundary_and_missing_tick(self):
         ticks = np.arange(25, 48)
