@@ -1,0 +1,122 @@
+# C++
+**/cmake-build*/
+**/build*/
+**/*.so
+**/*.log*
+
+# Omniverse
+**/*.dmp
+**/.thumbs
+
+# No USD files allowed in the repo
+**/*.usd
+**/*.usda
+**/*.usdc
+**/*.usdz
+
+# Python
+.DS_Store
+**/*.egg-info/
+**/__pycache__/
+**/.pytest_cache/
+**/*.pyc
+**/*.pb
+*.pyo
+.venv/
+venv/
+env/
+.uv-cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+.ipynb_checkpoints/
+dist/
+
+# Local secrets (keep example configuration shareable)
+.env
+.env.*
+!.env.example
+!.env.sample
+.python.env
+
+# Local agent configuration/state
+/.agents/
+/.codex/
+/AGENTS.md
+/TASK_MEMORY.md
+
+# Optional local/template config not needed for this repo push
+/.dockerignore
+/.pre-commit-config.yaml
+
+# Editor/OS temporary files
+*.swp
+*.swo
+*~
+Thumbs.db
+
+# Docker/Singularity
+**/*.sif
+docker/cluster/exports/
+docker/.container.cfg
+
+# IDE
+**/.idea/
+/.vscode/
+
+# Outputs
+**/output/*
+**/outputs/*
+**/videos/*
+**/wandb/*
+**/.neptune/*
+checkpoints/
+.hydra/
+docker/artifacts/
+*.tmp
+
+# Doc Outputs
+**/docs/_build/*
+**/generated/*
+
+# Isaac-Sim packman
+_isaac_sim*
+_repo
+_build
+.lastformat
+
+# RL-Games
+**/runs/*
+**/logs/*
+**/recordings/*
+
+# Pre-Trained Checkpoints
+/.pretrained_checkpoints/
+
+# Teleop Recorded Dataset
+/datasets/
+
+# Training binaries remain on disk.
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.npz
+*.mp4
+events.out.tfevents.*
+
+# Local experiment results and documentation
+/results/
+/docs/
+/reviews/
+
+# Docker history
+.isaac-lab-docker-history
+
+# TacSL sensor
+**/tactile_record/*
+**/gelsight_r15_data/*
