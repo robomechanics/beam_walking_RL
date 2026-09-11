@@ -8,6 +8,7 @@ import torch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "source/beam_walking"))
 from beam_walking.experiment.protocol import (
     width_score, clearance_score, leg_phase, discrete_stance_fraction, contact_score,
+    robust_contact_score,
     duty_warped_phase, straight_motion_cost, heading_stabilization_cost,
     speed_score, planar_speed_score, world_to_body, normalized_gait_command,
     sample_training_commands, fore_aft_target, FOUNDATION_CONTROL_STEPS,
@@ -57,15 +58,20 @@ class RewardShapingTest(unittest.TestCase):
         torch.testing.assert_close(
             foundation[:, [0, 2, 3]],
             torch.tensor([.30, .30, .48]).expand(120, -1))
-        self.assertEqual(torch.bincount(foundation[:, 4].long()).tolist(), [60, 60])
-        self.assertTrue(torch.all(foundation[foundation[:, 4] == 0, 1] == .625))
+        self.assertEqual(torch.bincount(foundation[:, 4].long()).tolist(), [90, 30])
+        self.assertEqual([
+            int((foundation[:, 1] == duty).sum()) for duty in DUTY_ANCHORS],
+            [30, 30, 60])
         self.assertTrue(torch.all(foundation[foundation[:, 4] == 1, 1] == .75))
         core, ticks, stage = sample_training_commands(120, FOUNDATION_CONTROL_STEPS)
         self.assertEqual(stage, 1)
         self.assertEqual({round(value, 3) for value in core[:, 0].tolist()}, set(SPEED_ANCHORS))
         self.assertEqual({round(value, 3) for value in core[:, 1].tolist()}, set(DUTY_ANCHORS))
         self.assertEqual({round(value, 3) for value in core[:, 2].tolist()}, set(STEP_WIDTH_ANCHORS))
-        self.assertEqual(torch.bincount(core[:, 4].long()).tolist(), [60, 60])
+        self.assertEqual(torch.bincount(core[:, 4].long()).tolist(), [90, 30])
+        self.assertEqual([
+            int(((core[:, 4] == 0) & (core[:, 1] == duty)).sum())
+            for duty in DUTY_ANCHORS], [30, 30, 30])
         self.assertTrue(torch.all(core[core[:, 4] == 1, 1] == .75))
         self.assertEqual(
             {round(value, 3) for value in core[core[:, 4] == 0, 1].tolist()},
@@ -78,6 +84,7 @@ class RewardShapingTest(unittest.TestCase):
         self.assertTrue(torch.all((coverage[:, 2] >= .10) & (coverage[:, 2] <= .50)))
         self.assertTrue(torch.all((ticks >= 18) & (ticks <= 27)))
         walk = coverage[:, 4] == 1
+        self.assertEqual(torch.bincount(coverage[:, 4].long()).tolist(), [300, 100])
         self.assertTrue(torch.all(coverage[walk, 1] == .75))
         self.assertTrue(torch.all(ticks[walk] >= 20))
 
@@ -235,6 +242,58 @@ class RewardShapingTest(unittest.TestCase):
                     ideal = contact_score(desired, desired, realized).mean()
                     compromise = contact_score(median_contact, desired, realized).mean()
                     self.assertGreater(ideal.item(), compromise.item())
+
+    def test_robust_contact_score_is_cycle_neutral_for_supported_gaits(self):
+        for count in range(18, 28):
+            for gid in [0, 1]:
+                duties = [.50, .625, min(.75, 1 - 5 / count)] if gid == 0 else [.75]
+                for df in duties:
+                    if df > 1 - 5 / count + 1e-7:
+                        continue
+                    ticks = torch.arange(count)
+                    periods = torch.full_like(ticks, count)
+                    gait = torch.full_like(ticks, gid)
+                    desired = leg_phase(ticks, periods, gait) < df
+                    duty = discrete_stance_fraction(
+                        torch.full((count,), df), periods, gait)
+                    force = torch.where(
+                        desired[:, None, :],
+                        torch.full((count, 4, 4), 15.),
+                        torch.zeros((count, 4, 4)))
+                    score = robust_contact_score(force, desired, duty)
+                    self.assertAlmostEqual(score.mean().item(), 1., places=6)
+                    self.assertTrue(torch.isfinite(score).all())
+
+    def test_robust_contact_score_penalizes_weak_load_dropout_and_swing_spike(self):
+        desired = torch.tensor([[True, False, True, False]])
+        duty = torch.full((1, 4), .5)
+        ideal = torch.tensor([[[15., 0., 15., 0.]]]).expand(1, 4, 4).clone()
+        weak = ideal.clone()
+        weak[:, :, [0, 2]] = 10.
+        dropout = ideal.clone()
+        dropout[:, 0, 0] = 0.
+        spike = ideal.clone()
+        spike[:, 0, 1] = 10.
+        ideal_score = robust_contact_score(ideal, desired, duty)
+        self.assertLess(robust_contact_score(weak, desired, duty).item(), ideal_score.item())
+        self.assertLess(robust_contact_score(dropout, desired, duty).item(), ideal_score.item())
+        self.assertLess(robust_contact_score(spike, desired, duty).item(), ideal_score.item())
+        higher = ideal.clone()
+        higher[:, :, [0, 2]] = 100.
+        torch.testing.assert_close(
+            robust_contact_score(higher, desired, duty), ideal_score)
+
+    def test_robust_contact_score_rejects_malformed_inputs(self):
+        desired = torch.ones(2, 4, dtype=torch.bool)
+        duty = torch.full((2, 4), .5)
+        with self.assertRaisesRegex(ValueError, "shape"):
+            robust_contact_score(torch.ones(2, 4), desired, duty)
+        with self.assertRaisesRegex(ValueError, "Desired"):
+            robust_contact_score(torch.ones(2, 4, 4), desired[:1], duty)
+        with self.assertRaisesRegex(ValueError, "margins"):
+            robust_contact_score(
+                torch.ones(2, 4, 4), desired, duty,
+                contact_threshold=5., stance_floor=4., swing_ceiling=2.)
 
 
 if __name__ == "__main__":

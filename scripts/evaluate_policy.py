@@ -71,13 +71,75 @@ if args.video:
 app = AppLauncher(args).app
 
 import torch
+from isaaclab.managers import (
+    DatasetExportMode, RecorderManagerBaseCfg, RecorderTerm, RecorderTermCfg,
+)
+from isaaclab.utils import configclass
 from isaaclab_rl.rsl_rl import RslRlVecEnvWrapper
 from rsl_rl.runners import OnPolicyRunner
 from beam_walking.experiment.analysis import (
     NOMINAL_SCHEMA, include_post_step_video_frame, nominal_archive_payload,
-    nominal_evaluation_source_hash,
+    nominal_evaluation_source_hash, oldest_first_force_history,
 )
 from beam_walking.experiment.task import BeamEnv, BeamEnvCfg, BeamPPORunnerCfg, command
+
+
+FORCE_THRESHOLDS_N = (2., 5., 10.)
+FORCE_SAMPLE_DT = .005
+FORCE_SAMPLES_PER_CONTROL = 4
+
+
+class EvaluationForceRecorder(RecorderTerm):
+    """Preserve terminal contact history before Isaac resets an environment."""
+
+    def __init__(self, cfg, env):
+        super().__init__(cfg, env)
+        gait = command(env)
+        self.sensor_feet = gait.sensor_feet
+        self.terminal = torch.zeros(
+            env.num_envs, FORCE_SAMPLES_PER_CONTROL, 4,
+            dtype=torch.float32, device=env.device)
+        self.captured = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
+
+    def force_history(self):
+        history = self._env.scene["contact_forces"].data.net_forces_w_history
+        forces = history[:, :, self.sensor_feet].norm(dim=-1)
+        if forces.shape[1:] != (FORCE_SAMPLES_PER_CONTROL, 4):
+            raise RuntimeError(
+                f"Unexpected contact-force history shape {tuple(forces.shape)}")
+        # Isaac stores newest first; archives use chronological oldest-to-newest.
+        return oldest_first_force_history(forces).to(torch.float32)
+
+    def record_pre_step(self):
+        self.captured.zero_()
+        return None, None
+
+    def record_pre_reset(self, env_ids):
+        ids = torch.as_tensor(env_ids, device=self._env.device, dtype=torch.long)
+        self.terminal[ids] = self.force_history()[ids].clone()
+        self.captured[ids] = True
+        return None, None
+
+    def post_step_history(self, done):
+        result = self.force_history().clone()
+        if bool(done.any()):
+            if not bool(self.captured[done].all()):
+                raise RuntimeError("Terminal contact forces were not captured pre-reset")
+            result[done] = self.terminal[done]
+        return result
+
+
+@configclass
+class EvaluationForceRecorderCfg(RecorderTermCfg):
+    class_type: type[RecorderTerm] = EvaluationForceRecorder
+
+
+@configclass
+class EvaluationRecorderManagerCfg(RecorderManagerBaseCfg):
+    force_history = EvaluationForceRecorderCfg()
+    dataset_export_mode = DatasetExportMode.EXPORT_NONE
+    export_in_record_pre_reset = False
+    export_in_close = False
 
 
 def source_hash(paths):
@@ -119,6 +181,17 @@ def evaluate(env, wrapped, policy, provenance):
         "source_sha256": provenance["task_sha256"],
         "evaluator_sha256": provenance["evaluator_sha256"],
         "checkpoint_sha256": provenance["checkpoint_sha256"],
+        "force_instrumented": True,
+        "force_field": "foot_force_norm_200hz", "force_units": "N",
+        "force_sample_dt": FORCE_SAMPLE_DT,
+        "force_samples_per_control": FORCE_SAMPLES_PER_CONTROL,
+        "force_history_order": "oldest_to_newest",
+        "force_leg_order": ["FL", "FR", "RL", "RR"],
+        "contact_thresholds_n": list(FORCE_THRESHOLDS_N),
+        "policy_contact_threshold_n": 5.,
+        "terminal_force_capture": "recorder_pre_reset",
+        "scientific_role": "command_fidelity_prerequisite",
+        "not_closed_loop_chi_evidence": True,
     }
     (args.output / "evaluation_manifest.json").write_text(json.dumps(manifest, indent=2))
 
@@ -165,13 +238,21 @@ def evaluate(env, wrapped, policy, provenance):
                 video_writer = imageio.get_writer(temporary_video, fps=25)
                 video_writer.append_data(env.render())
             active = torch.ones(n, device=env.device, dtype=torch.bool)
+            force_recorder = env.recorder_manager._terms["force_history"]
             traces = {}
             try:
                 for step in range(env.max_episode_length):
                     obs, _, done, _ = wrapped.step(policy(obs))
+                    done = done.bool()
+                    force_history = force_recorder.post_step_history(done)
+                    if not torch.equal(force_history[:, -1] > 5., env.transition["contacts"]):
+                        raise RuntimeError(
+                            "Archived 5 N terminal contact does not match policy contact")
                     record = {
                         **env.transition, "valid": active.clone(),
-                        "done": done.bool().clone(),
+                        "done": done.clone(),
+                        "foot_force_norm_200hz": force_history,
+                        "terminal_force_preserved": (active & done).clone(),
                     }
                     for key, value in record.items():
                         traces.setdefault(key, []).append(value.cpu().numpy())
@@ -197,6 +278,17 @@ def evaluate(env, wrapped, policy, provenance):
                 "source_sha256": provenance["task_sha256"],
                 "evaluator_sha256": provenance["evaluator_sha256"],
                 "checkpoint_sha256": provenance["checkpoint_sha256"],
+                "force_instrumented": True,
+                "force_field": "foot_force_norm_200hz", "force_units": "N",
+                "force_sample_dt": FORCE_SAMPLE_DT,
+                "force_samples_per_control": FORCE_SAMPLES_PER_CONTROL,
+                "force_history_order": "oldest_to_newest",
+                "force_leg_order": np.asarray(["FL", "FR", "RL", "RR"]),
+                "contact_thresholds_n": np.asarray(FORCE_THRESHOLDS_N),
+                "policy_contact_threshold_n": 5.,
+                "terminal_force_capture": "recorder_pre_reset",
+                "scientific_role": "command_fidelity_prerequisite",
+                "not_closed_loop_chi_evidence": True,
                 "period": args.period, "gait": args.gait,
                 "step_width": width,
                 "phase_offsets": np.asarray(GAIT_OFFSETS[GAITS.index(args.gait)]),
@@ -257,6 +349,7 @@ def main():
     cfg.stance_start_probability = args.stance_start_probability
     cfg.sim.device = args.device or "cuda:0"
     cfg.events.motor_gain_randomization = None
+    cfg.recorders = EvaluationRecorderManagerCfg()
     env = BeamEnv(cfg, render_mode="rgb_array" if args.video else None)
     wrapped = None
     try:

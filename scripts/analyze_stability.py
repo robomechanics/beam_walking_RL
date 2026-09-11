@@ -46,6 +46,12 @@ def invalid_message(ax):
     ax.set_axis_off()
 
 
+def scope_note(ax, text):
+    ax.text(.99, .01, text, ha="right", va="bottom", fontsize=8,
+            transform=ax.transAxes,
+            bbox={"facecolor": "white", "alpha": .8, "edgecolor": "none"})
+
+
 fig, axes = plt.subplots(1, 2, figsize=(12, 4), squeeze=False)
 for ax, gait in zip(axes[0], ("trot", "walk")):
     subset = valid[valid.gait == gait]
@@ -58,6 +64,7 @@ for ax, gait in zip(axes[0], ("trot", "walk")):
     ax.set(title=gait.title(), xlabel="Achieved-command gate: duty factor",
            ylabel=r"Orbital convergence $\chi_{orb}$ (lower is better)")
     ax.legend(title="Stance width")
+    scope_note(ax, f"Valid cells only: {len(subset)}/{int((table.gait == gait).sum())}")
 save(fig, "paper_convergence_vs_duty_factor")
 
 fig, axes = plt.subplots(1, 2, figsize=(12, 4), squeeze=False)
@@ -73,6 +80,7 @@ for ax, gait in zip(axes[0], ("trot", "walk")):
     ax.set(title=gait.title(), xlabel="Commanded full stance width (m)",
            ylabel=r"Orbital convergence $\chi_{orb}$ (lower is better)")
     ax.legend()
+    scope_note(ax, f"Valid cells only: {len(subset)}/{int((table.gait == gait).sum())}")
 save(fig, "paper_convergence_vs_stance_width")
 
 fig, ax = plt.subplots(figsize=(7, 4))
@@ -85,6 +93,7 @@ else:
     ax.set(xlabel="Commanded forward speed (m/s)",
            ylabel=r"Orbital convergence $\chi_{orb}$ (lower is better)")
     ax.legend()
+    scope_note(ax, f"Valid cells only: {len(valid)}/{len(table)}")
 save(fig, "paper_convergence_vs_speed")
 
 fig, ax = plt.subplots(figsize=(6, 5))
@@ -104,6 +113,7 @@ else:
     ax.set(
         xlabel=r"Primary orbital $\chi_{orb}$ (46D)",
         ylabel=r"Unquotiented diagnostic $\chi_{full}$ (48D)")
+    scope_note(ax, f"Valid cells only: {len(valid)}/{len(table)}")
 save(fig, "paper_orbital_vs_full_diagnostic")
 
 fig, ax = plt.subplots(figsize=(7, 4))
@@ -129,5 +139,73 @@ else:
     ax.set(xticks=list(x), xticklabels=labels, ylabel="Reference pass rate",
            ylim=(0, 1.05))
     ax.legend()
+    scope_note(ax, f"All planned cells shown: {len(table)}")
 save(fig, "paper_validity_gates")
+
+energy_table = pd.read_csv(args.directory / "paper_energy_conditions.csv")
+energy_valid = energy_table[
+    energy_table.energy_condition_valid.astype(bool)].copy()
+energy_metric = "positive_mechanical_cot_median"
+
+fig, axes = plt.subplots(1, 2, figsize=(12, 4), squeeze=False)
+for ax, gait in zip(axes[0], ("trot", "walk")):
+    subset = energy_valid[energy_valid.gait == gait]
+    if subset.empty:
+        invalid_message(ax)
+        continue
+    grouped = subset.groupby(["command_df", "speed"], as_index=False)[
+        energy_metric].median()
+    for speed, group in grouped.groupby("speed"):
+        ax.plot(group.command_df, group[energy_metric], "o-",
+                label=f"{speed:.2f} m/s")
+    ax.set(title=gait.title(), xlabel="Commanded duty factor",
+           ylabel="Positive mechanical CoT (lower is better)")
+    ax.legend(title="Speed")
+    scope_note(
+        ax, f"Valid cells only: {len(subset)}/{int((energy_table.gait == gait).sum())}\n"
+        "Positive mechanical proxy; electrical loss excluded")
+save(fig, "paper_efficiency_vs_duty_factor_and_speed")
+
+fig, axes = plt.subplots(1, 2, figsize=(12, 4), squeeze=False)
+for ax, gait in zip(axes[0], ("trot", "walk")):
+    subset = energy_valid[energy_valid.gait == gait]
+    if subset.empty:
+        invalid_message(ax)
+        continue
+    grouped = subset.groupby(["step_width", "command_df"], as_index=False)[
+        energy_metric].median()
+    for duty, group in grouped.groupby("command_df"):
+        ax.plot(group.step_width, group[energy_metric], "o-",
+                label=f"DF {duty:.3f}")
+    ax.axvline(.30, color="black", ls=":", alpha=.5,
+               label="Nominal comparison")
+    ax.set(title=gait.title(), xlabel="Commanded full stance width (m)",
+           ylabel="Positive mechanical CoT (lower is better)")
+    ax.legend()
+    scope_note(
+        ax, f"Valid cells only: {len(subset)}/{int((energy_table.gait == gait).sum())}\n"
+        "Positive mechanical proxy; electrical loss excluded")
+save(fig, "paper_efficiency_vs_stance_width")
+
+fig, ax = plt.subplots(figsize=(6, 5))
+paired = valid.merge(
+    energy_valid,
+    on=["speed", "command_df", "step_width", "period", "gait"],
+    how="inner", suffixes=("_chi", "_energy"))
+if paired.empty:
+    invalid_message(ax)
+else:
+    for gait, group in paired.groupby("gait"):
+        ax.scatter(group[metric], group[energy_metric], label=gait.title(),
+                   alpha=.75)
+    ax.set(xlabel=r"Orbital convergence $\chi_{orb}$ (lower is better)",
+           ylabel="Positive mechanical CoT (lower is better)")
+    ax.legend()
+    scope_note(
+        ax, f"Paired valid cells: {len(paired)}/{len(table)}\n"
+        "Descriptive; widths >=0.10 m; no beam/push\n"
+        "No paper high-speed crossover test")
+save(fig, "paper_convergence_efficiency_relationship")
+
 print(table.to_string(index=False))
+print(energy_table.to_string(index=False))

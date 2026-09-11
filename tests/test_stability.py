@@ -14,7 +14,8 @@ from beam_walking.experiment.stability import (
     AUGMENTED_DIM, FROZEN_GATE_LIMITS, PHYSICAL_DIM, PRIMARY_METRIC,
     RAW_STATE_DIM, STATE_SCALES, confirmatory_protocol,
     analyze_policy_ensemble, analyze_stability, apply_scaled_perturbation,
-    canonical_condition_keys, canonical_reference_states, command_fidelity,
+    canonical_condition_keys, canonical_physical_condition_keys,
+    canonical_reference_states, command_fidelity, mechanical_cot,
     construct_master_stencil, contact_event_signature, estimate_maps,
     hybrid_topology_gate, paper_claim_summary, translation_symmetry_fidelity,
     master_stencil_layout, quaternion_to_rotation_vector,
@@ -82,8 +83,9 @@ TRAINING_PROVENANCE_BYTES = json.dumps(
 
 
 def manifest_for(names, conditions):
+    energy_name = "energy_s0.300_d0.500_v0.300_trot_p0.48.npz"
     return {
-        "schema": "beam_stability_v2",
+        "schema": "beam_stability_v3",
         "external_pushes": False,
         "paper_metric_primary":
             "chi_orb=sigma_max(Phi_orbital_augmented_46D)",
@@ -100,8 +102,8 @@ def manifest_for(names, conditions):
         "settle_cycles": 12,
         "reference_initial_offset_half_width_normalized": .02,
         "gait_regime": {
-            "trot_df": [.50, .75],
-            "walk_df": [.75, .75],
+            "trot_df": [.50, .625, .75],
+            "walk_df": [.75],
             "minimum_swing_s": .10,
         },
         "confirmatory_grid": False,
@@ -129,6 +131,26 @@ def manifest_for(names, conditions):
         "action_order": [f"joint_{index}" for index in range(12)],
         "expected_files": names,
         "expected_conditions": conditions,
+        "energy_schema": "positive_mechanical_cot_v1",
+        "energy_metric_primary": "positive_mechanical_cot",
+        "energy_metric_diagnostic": "absolute_mechanical_cot",
+        "electrical_loss_included": False,
+        "energy_formula":
+            "sum(max(applied_torque*left_endpoint_joint_velocity,0))*dt/(mass*g*delta_x)",
+        "energy_measurement_cycles": 4,
+        "energy_sample_dt": .005,
+        "energy_samples_per_control": 4,
+        "energy_torque_source": "robot.data.applied_torque_after_clipping",
+        "energy_velocity_timestamp": "left_endpoint",
+        "energy_integration_rule": "left_rectangle",
+        "robot_mass_kg": 10.,
+        "gravity_mps2": 9.81,
+        "joint_effort_limits_nm": [23.5] * 12,
+        "expected_energy_files": [energy_name],
+        "expected_energy_conditions": [{
+            "filename": energy_name, "speed": .3, "duty_factor": .5,
+            "step_width": .3, "period": .48, "gait": "trot",
+        }],
     }
 
 
@@ -184,7 +206,92 @@ def nominal_payload(matrix, h):
     }
 
 
+def energy_payload():
+    references, cycles, steps, substeps = 1, 4, 24, 4
+    desired = desired_trot_cycle()
+    contacts = np.broadcast_to(
+        desired, (references, cycles, steps, 4)).copy()
+    substep_contacts = np.repeat(contacts[:, :, :, None, :], substeps, axis=3)
+    feet = np.zeros((references, cycles, steps, 4, 3))
+    feet[..., 1] = np.asarray([.15, -.15, .15, -.15])
+    torque = np.ones((references, cycles, steps * substeps, 12))
+    velocity = np.ones_like(torque)
+    boundaries = np.zeros((references, cycles, 2))
+    boundaries[..., 0] = np.arange(cycles) * .144
+    boundaries[..., 1] = boundaries[..., 0] + .144
+    values = mechanical_cot(torque, velocity, boundaries, 10., 9.81, .005)
+    return {
+        "schema": "positive_mechanical_cot_v1",
+        "command": np.asarray([.3, .5, .3, .48, 0]),
+        "applied_torque": torque, "joint_velocity": velocity,
+        "x_boundaries": boundaries,
+        "initial_contacts": np.broadcast_to(
+            desired[-1], (references, cycles, 4)).copy(),
+        "initial_desired": np.broadcast_to(
+            desired[-1], (references, cycles, 4)).copy(),
+        "phase_ticks": np.broadcast_to(
+            np.arange(steps), (references, cycles, steps)).copy(),
+        "contacts": contacts, "substep_contacts": substep_contacts,
+        "desired": contacts.copy(), "feet_body": feet,
+        "forward_velocity": np.full((references, cycles, steps), .3),
+        "lateral_position": np.zeros((references, cycles, steps)),
+        "heading": np.zeros((references, cycles, steps)),
+        "world_lateral_velocity": np.zeros((references, cycles, steps)),
+        "body_yaw_rate": np.zeros((references, cycles, steps)),
+        "failure": np.zeros((references, cycles, steps), dtype=bool),
+        "done": np.zeros((references, cycles, steps), dtype=bool),
+        "cycle_rms": np.asarray([.01]),
+        "settle_done": np.asarray([False]),
+        **values,
+        "sample_dt": .005, "measurement_cycles": 4,
+        "robot_mass_kg": 10., "gravity_mps2": 9.81,
+        "joint_effort_limits_nm": np.full(12, 23.5),
+        "joint_order": np.asarray([f"joint_{index}" for index in range(12)]),
+        "torque_source": "robot.data.applied_torque_after_clipping",
+        "velocity_timestamp": "left_endpoint",
+        "integration_rule": "left_rectangle",
+        "electrical_loss_included": False,
+        "task_sha256": "task", "evaluation_sha256": "evaluation",
+        "checkpoint_sha256": "checkpoint",
+    }
+
+
 class StabilityMetricTest(unittest.TestCase):
+
+    def test_canonical_physical_grid_has_exactly_eighty_cells(self):
+        keys = canonical_physical_condition_keys()
+        self.assertEqual(len(keys), 80)
+        self.assertEqual(
+            {key + (h,) for key in keys for h in (.025, .05, .10)},
+            canonical_condition_keys())
+
+    def test_positive_mechanical_cot_uses_left_rule_and_excludes_negative_power(self):
+        torque = np.zeros((1, 1, 2, 12))
+        velocity = np.zeros_like(torque)
+        torque[0, 0, :, 0] = [2., 3.]
+        velocity[0, 0, :, 0] = [4., -5.]
+        result = mechanical_cot(
+            torque, velocity, np.asarray([[[1., 1.5]]]),
+            mass=2., gravity=10., sample_dt=.1)
+        self.assertAlmostEqual(result["positive_work_j"].item(), .8)
+        self.assertAlmostEqual(result["absolute_work_j"].item(), 2.3)
+        self.assertAlmostEqual(result["forward_displacement_m"].item(), .5)
+        self.assertAlmostEqual(result["positive_mechanical_cot"].item(), .08)
+        self.assertAlmostEqual(result["absolute_mechanical_cot"].item(), .23)
+
+    def test_mechanical_cot_rejects_bad_shapes_and_nonpositive_progress(self):
+        torque = np.ones((2, 4, 8, 12))
+        velocity = np.ones_like(torque)
+        boundaries = np.zeros((2, 4, 2))
+        boundaries[..., 1] = 1.
+        with self.assertRaisesRegex(ValueError, "Torque"):
+            mechanical_cot(torque[..., :11], velocity[..., :11], boundaries, 1., 9.81)
+        with self.assertRaisesRegex(ValueError, "match"):
+            mechanical_cot(torque, velocity[..., :11], boundaries, 1., 9.81)
+        backwards = boundaries.copy()
+        backwards[0, 0] = [1., 0.]
+        with self.assertRaisesRegex(ValueError, "positive forward"):
+            mechanical_cot(torque, velocity, backwards, 1., 9.81)
     def test_confirmatory_protocol_requires_all_frozen_resources(self):
         protocol = {
             "condition_keys": canonical_condition_keys(),
@@ -348,6 +455,9 @@ class StabilityMetricTest(unittest.TestCase):
             np.savez_compressed(directory / name, **payload)
         (directory / "training_provenance.json").write_bytes(
             TRAINING_PROVENANCE_BYTES)
+        np.savez_compressed(
+            directory / "energy_s0.300_d0.500_v0.300_trot_p0.48.npz",
+            **energy_payload())
         (directory / "stability_manifest.json").write_text(json.dumps(
             manifest_for(names, conditions)))
         return names
@@ -398,6 +508,52 @@ class StabilityMetricTest(unittest.TestCase):
             self.assertTrue(all(row["valid_references"] == 0 for row in summary))
             table = (directory / "stability_references.csv").read_text()
             self.assertIn(",47,", table)
+
+    def test_energy_rejects_nonperiodic_reference_even_when_other_gates_pass(self):
+        import pandas as pd
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            def nonperiodic(payload, _h):
+                payload["cycle_rms"] = np.asarray([.021])
+
+            self._write_grid(directory, mutate=nonperiodic)
+            path = directory / "energy_s0.300_d0.500_v0.300_trot_p0.48.npz"
+            payload = energy_payload()
+            payload["cycle_rms"] = np.asarray([.021])
+            np.savez_compressed(path, **payload)
+            analyze_stability(directory)
+            table = pd.read_csv(directory / "paper_energy_conditions.csv")
+            self.assertEqual(table.energy_condition_valid.tolist(), [0])
+            references = pd.read_csv(directory / "energy_references.csv")
+            self.assertEqual(references.energy_periodic_orbit_gate_pass.tolist(), [0])
+            self.assertEqual(references.command_gate_pass.tolist(), [1])
+            self.assertEqual(references.energy_topology_gate_pass.tolist(), [1])
+
+    def test_energy_periodicity_must_match_paired_stability_archives(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+
+            def nonperiodic(payload, _h):
+                payload["cycle_rms"] = np.asarray([.021])
+
+            self._write_grid(directory, mutate=nonperiodic)
+            energy_path = (
+                directory / "energy_s0.300_d0.500_v0.300_trot_p0.48.npz")
+            payload = energy_payload()
+            payload["cycle_rms"] = np.asarray([.001])
+            np.savez_compressed(energy_path, **payload)
+            with self.assertRaisesRegex(ValueError, "paired stability"):
+                analyze_stability(directory)
+
+    def test_all_h_archives_must_share_settling_identity(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            names = self._write_grid(directory)
+            payload = nominal_payload(np.eye(AUGMENTED_DIM), .05)
+            payload["cycle_rms"] = np.asarray([.011])
+            np.savez_compressed(directory / names[1], **payload)
+            with self.assertRaisesRegex(ValueError, "perturbation sizes"):
+                analyze_stability(directory)
 
     def test_scale_and_command_identity_mismatches_are_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -479,16 +635,30 @@ class StabilityMetricTest(unittest.TestCase):
                             })
             directories = []
             expected = [{"row": index} for index in range(len(rows))]
+            energy_rows = []
+            for row in rows:
+                ratio = (
+                    .8 + (row["speed"] - .25) * (.1 / .15)
+                    if row["command_df"] == .75 else
+                    (.9 if row["command_df"] == .625 else 1.))
+                energy_rows.append({
+                    **{key: row[key] for key in (
+                        "speed", "command_df", "step_width", "period", "gait")},
+                    "energy_condition_valid": 1,
+                    "positive_mechanical_cot_median": (1 + row["speed"]) * ratio,
+                })
             for policy in range(5):
                 directory = root / f"policy_{policy}"
                 directory.mkdir()
                 directories.append(directory)
                 manifest = {
-                    "schema": "beam_stability_v2",
+                    "schema": "beam_stability_v3",
                     "task_sha256": "task",
                     "evaluation_sha256": "evaluation",
                     "state_scales": STATE_SCALES.tolist(),
                     "expected_conditions": expected,
+                    "expected_energy_conditions": [{"row": index} for index in range(80)],
+                    "expected_energy_files": [f"energy_{index}" for index in range(80)],
                     "joint_order": [f"joint_{i}" for i in range(12)],
                     "action_order": [f"joint_{i}" for i in range(12)],
                     "paper_metric_primary":
@@ -513,10 +683,23 @@ class StabilityMetricTest(unittest.TestCase):
                         "final_requested_iteration",
                     "checkpoint_iteration": 1799,
                     "gait_regime": {
-                        "trot_df": [.50, .75],
-                        "walk_df": [.75, .75],
+                        "trot_df": [.50, .625, .75],
+                        "walk_df": [.75],
                         "minimum_swing_s": .10,
                     },
+                    "energy_schema": "positive_mechanical_cot_v1",
+                    "energy_metric_primary": "positive_mechanical_cot",
+                    "energy_metric_diagnostic": "absolute_mechanical_cot",
+                    "electrical_loss_included": False,
+                    "energy_formula": "formula",
+                    "energy_measurement_cycles": 4,
+                    "energy_sample_dt": .005,
+                    "energy_samples_per_control": 4,
+                    "energy_torque_source": "robot.data.applied_torque_after_clipping",
+                    "energy_velocity_timestamp": "left_endpoint",
+                    "energy_integration_rule": "left_rectangle",
+                    "robot_mass_kg": 10., "gravity_mps2": 9.81,
+                    "joint_effort_limits_nm": [23.5] * 12,
                     "checkpoint_sha256": f"checkpoint_{policy}",
                     "training_seed": policy,
                     "fresh_training": True,
@@ -527,7 +710,11 @@ class StabilityMetricTest(unittest.TestCase):
                     json.dumps(manifest))
                 pd.DataFrame(rows).to_csv(
                     directory / "paper_conditions.csv", index=False)
+                pd.DataFrame(energy_rows).to_csv(
+                    directory / "paper_energy_conditions.csv", index=False)
                 (directory / "paper_claims.json").write_text(json.dumps({
+                    "claim_values_released": True}))
+                (directory / "paper_energy_claims.json").write_text(json.dumps({
                     "claim_values_released": True}))
             output = root / "ensemble"
             with patch(
@@ -541,6 +728,8 @@ class StabilityMetricTest(unittest.TestCase):
                           report["equivalence_margin_source"])
             self.assertEqual(report["primary_metric"], PRIMARY_METRIC)
             self.assertTrue((output / "policy_effects.csv").is_file())
+            self.assertTrue((output / "energy_policy_effects.csv").is_file())
+            self.assertTrue(report["energy"]["qualitative_alignment_pass"])
             self.assertTrue((output / "ensemble_claims.json").is_file())
 
             last_path = directories[-1] / "stability_manifest.json"

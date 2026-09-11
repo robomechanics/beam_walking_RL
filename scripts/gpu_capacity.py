@@ -6,6 +6,28 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
+RUSTDESK_PROCESS_LIMIT_MIB = 512
+RUSTDESK_TOTAL_LIMIT_MIB = 512
+
+
+def classify_compute_processes(processes, current_user):
+    """Allow only the current user's bounded RustDesk CUDA context."""
+    allowed, blocked = [], []
+    for process in processes:
+        name = Path(process.get("process_name", "")).name.lower()
+        command = process.get("command", "").lower()
+        is_rustdesk = name == "rustdesk" and "rustdesk" in command
+        owned = process.get("owner") == current_user
+        small = (
+            process.get("used_gpu_memory_mib", RUSTDESK_PROCESS_LIMIT_MIB + 1)
+            <= RUSTDESK_PROCESS_LIMIT_MIB
+        )
+        (allowed if is_rustdesk and owned and small else blocked).append(process)
+    if sum(item["used_gpu_memory_mib"] for item in allowed) > RUSTDESK_TOTAL_LIMIT_MIB:
+        blocked.extend(allowed)
+        allowed = []
+    return allowed, blocked
+
 
 def _compute_processes(index):
     query = subprocess.run([
@@ -65,6 +87,11 @@ def check_capacity(mode, num_envs, device="cuda:0", video=False):
         required_mib += 2048
     required_system_mib = 8192 + num_envs * 2 + (2048 if video else 0)
     compute_processes = _compute_processes(index)
+    current_user = pwd.getpwuid(os.getuid()).pw_name
+    if mode in ("smoke", "train", "benchmark"):
+        allowed, blocked = classify_compute_processes(compute_processes, current_user)
+    else:
+        allowed, blocked = [], list(compute_processes)
     record = {
         "checked_at": datetime.now(timezone.utc).isoformat(),
         "checker_pid": os.getpid(),
@@ -77,13 +104,18 @@ def check_capacity(mode, num_envs, device="cuda:0", video=False):
         "available_system_mib": available_system_mib,
         "required_system_mib": required_system_mib,
         "compute_processes": compute_processes,
+        "allowed_rustdesk_processes": allowed,
+        "blocked_compute_processes": blocked,
         "exclusive_compute_device": len(compute_processes) == 0,
+        "rustdesk_exception_applied": bool(allowed),
+        "rustdesk_process_limit_mib": RUSTDESK_PROCESS_LIMIT_MIB,
+        "rustdesk_total_limit_mib": RUSTDESK_TOTAL_LIMIT_MIB,
     }
     print("GPU_CAPACITY", json.dumps(record), flush=True)
-    if compute_processes:
+    if blocked:
         raise RuntimeError(
-            "GPU already has active compute processes; no process was stopped: "
-            f"{compute_processes}")
+            "GPU has a compute process outside the narrow RustDesk exception; "
+            f"no process was stopped: {blocked}")
     if int(free) < required_mib or available_system_mib < required_system_mib:
         raise RuntimeError(
             f"Insufficient free memory to start {mode}; resource check: {record}")

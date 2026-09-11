@@ -19,12 +19,23 @@ DUTY_RANGE = (.50, .75)
 SPEED_ANCHORS = (.25, .30, .35, .40)
 STEP_WIDTH_ANCHORS = (.10, .20, .30, .40, .50)
 DUTY_ANCHORS = (.50, .625, .75)
+COMMAND_STRATA = ((0, .50), (0, .625), (0, .75), (1, .75))
 STEP_WIDTH_FRAME = "body"
 MIN_SWING_STEPS = 5  # >=0.10 s of requested swing on every leg; validate physically.
 WIDTHS = (.8, .45, .30, .20)
 FOUNDATION_CONTROL_STEPS = 2400  # 50 PPO updates with the 48-step rollout horizon.
 CORE_CONTROL_STEPS = 7200        # Expand period/interpolation after 150 updates.
 ANCHOR_FRACTION = .75
+
+
+def advance_phase_ticks(ticks, period_ticks, reset_mask):
+    """Advance continuing environments and keep freshly reset ones at phase zero."""
+    if ticks.shape != period_ticks.shape or ticks.shape != reset_mask.shape:
+        raise ValueError("Phase ticks, periods, and reset mask must have identical shapes")
+    # Periods are validated when commands are constructed. Avoid a GPU-to-CPU
+    # synchronization in this per-control-step helper.
+    advanced = (ticks + 1) % period_ticks
+    return torch.where(reset_mask, torch.zeros_like(advanced), advanced)
 
 
 def validate_scientific_gait_duties(gait, duties):
@@ -76,43 +87,41 @@ def sample_training_commands(count, common_control_step, device="cpu"):
     period_ticks = torch.full(
         (count,), CYCLE_STEPS, device=device, dtype=torch.long)
     if common_control_step < FOUNDATION_CONTROL_STEPS:
-        gait = _balanced_indices(count, len(GAITS), device)
+        stratum = _balanced_indices(count, len(COMMAND_STRATA), device)
+        strata = torch.tensor(COMMAND_STRATA, device=device)
         values[:] = torch.tensor([.30, .625, .30, PERIOD, 0.], device=device)
-        values[:, 4] = gait.to(values.dtype)
-        values[:, 1] = torch.where(
-            gait == GAITS.index("walk"), .75, .625)
+        values[:, 4] = strata[stratum, 0]
+        values[:, 1] = strata[stratum, 1]
         return values, period_ticks, 0
 
     core_count = (
         count if common_control_step < CORE_CONTROL_STEPS
         else round(ANCHOR_FRACTION * count)
     )
-    # Balance gait competence 50/50 first. Within trot, balance the three DFs.
-    gait = _balanced_indices(core_count, len(GAITS), device)
+    # Balance the four paper-facing gait/DF strata exactly. This gives matched
+    # walk and trot at DF=.75 equal exposure without favoring an outcome sign.
+    stratum = _balanced_indices(core_count, len(COMMAND_STRATA), device)
+    strata = torch.tensor(COMMAND_STRATA, device=device)
     if core_count:
         values[:core_count, 3] = PERIOD
-        values[:core_count, 4] = gait.to(values.dtype)
-        for gait_index in range(len(GAITS)):
-            ids = (gait == gait_index).nonzero().flatten()
-            duty_levels = DUTY_ANCHORS if gait_index == GAITS.index("trot") else (.75,)
-            combinations = (
-                len(SPEED_ANCHORS) * len(STEP_WIDTH_ANCHORS)
-                * len(duty_levels)
-            )
+        values[:core_count, 4] = strata[stratum, 0]
+        values[:core_count, 1] = strata[stratum, 1]
+        for stratum_index in range(len(COMMAND_STRATA)):
+            ids = (stratum == stratum_index).nonzero().flatten()
+            combinations = len(SPEED_ANCHORS) * len(STEP_WIDTH_ANCHORS)
             combo = _balanced_indices(len(ids), combinations, device)
-            duty_index = combo % len(duty_levels)
-            combo = combo // len(duty_levels)
             width = combo % len(STEP_WIDTH_ANCHORS)
             speed = combo // len(STEP_WIDTH_ANCHORS)
             values[ids, 0] = torch.tensor(SPEED_ANCHORS, device=device)[speed]
-            values[ids, 1] = torch.tensor(duty_levels, device=device)[duty_index]
             values[ids, 2] = torch.tensor(
                 STEP_WIDTH_ANCHORS, device=device)[width]
 
     remaining = count - core_count
     if remaining:
         target = slice(core_count, count)
-        gait = _balanced_indices(remaining, len(GAITS), device)
+        stratum = _balanced_indices(remaining, len(COMMAND_STRATA), device)
+        strata = torch.tensor(COMMAND_STRATA, device=device)
+        gait = strata[stratum, 0].long()
         values[target, 0] = (
             SPEED_RANGE[0]
             + (SPEED_RANGE[1] - SPEED_RANGE[0])
@@ -135,16 +144,15 @@ def sample_training_commands(count, common_control_step, device="cpu"):
             torch.full((remaining,), DUTY_RANGE[1], device=device),
             1. - MIN_SWING_STEPS / period_ticks[target],
         )
-        sampled_trot_df = (
-            DUTY_RANGE[0]
-            + (max_df - DUTY_RANGE[0])
-            * torch.rand(remaining, device=device)
-        )
+        # Equal-probability Voronoi bins around the three trot anchors preserve
+        # continuous DF coverage without changing stratum exposure.
+        lower = torch.tensor([.50, .5625, .6875, .75], device=device)[stratum]
+        upper = torch.tensor([.5625, .6875, .75, .75], device=device)[stratum]
+        upper = torch.minimum(upper, max_df)
+        sampled_df = lower + (upper - lower) * torch.rand(remaining, device=device)
         values[target, 1] = torch.where(
             gait == GAITS.index("walk"),
-            torch.full_like(sampled_trot_df, .75),
-            sampled_trot_df,
-        )
+            torch.full_like(sampled_df, .75), sampled_df)
         values[target, 2] = (
             STEP_WIDTH_RANGE[0]
             + (STEP_WIDTH_RANGE[1] - STEP_WIDTH_RANGE[0])
@@ -165,6 +173,43 @@ def contact_score(actual, desired, duty):
         duty = duty[:, None]
     return .5 * ((actual & desired).float() / duty
                  + (~actual & ~desired).float() / (1 - duty)).mean(dim=1)
+
+
+def robust_contact_score(force_norm, desired, duty, contact_threshold=5.,
+                         stance_floor=15., swing_ceiling=2.):
+    """Score scheduled contact at physics rate with bounded force margins.
+
+    ``force_norm`` is ``[environment, substep, leg]``.  Stance and swing are
+    duration balanced by the realized per-leg schedule duty, so an ideal gait
+    receives the same cycle-average score for every supported command.
+    """
+    if force_norm.ndim != 3 or force_norm.shape[-1] != 4:
+        raise ValueError("Contact forces must have shape [environment, substep, 4]")
+    if desired.shape != (force_norm.shape[0], force_norm.shape[2]):
+        raise ValueError("Desired contacts must have shape [environment, 4]")
+    if duty.ndim == 1:
+        duty = duty[:, None]
+    if duty.shape != desired.shape:
+        raise ValueError("Realized schedule duty must match desired contacts")
+    if not (swing_ceiling < contact_threshold < stance_floor):
+        raise ValueError("Force margins must satisfy swing < contact < stance")
+
+    desired = desired[:, None, :]
+    duty = duty[:, None, :]
+    contact = force_norm > contact_threshold
+    hard = .5 * (
+        (contact & desired).to(force_norm.dtype) / duty
+        + (~contact & ~desired).to(force_norm.dtype) / (1 - duty)
+    )
+    stance_quality = ((force_norm - contact_threshold)
+                       / (stance_floor - contact_threshold)).clamp(0., 1.)
+    swing_quality = ((contact_threshold - force_norm)
+                      / (contact_threshold - swing_ceiling)).clamp(0., 1.)
+    margin = .5 * (
+        desired.to(force_norm.dtype) * stance_quality / duty
+        + (~desired).to(force_norm.dtype) * swing_quality / (1 - duty)
+    )
+    return .5 * hard.mean(dim=(1, 2)) + .5 * margin.mean(dim=(1, 2))
 
 
 def normalized_gait_command(values):

@@ -9,7 +9,11 @@ LEGS = ("FL", "FR", "RL", "RR")
 OFFSETS = (0., .5, .5, 0.)
 PERIOD = .48
 DT = .02
-NOMINAL_SCHEMA = "nominal_flat_gait_eval_v2"
+LEGACY_NOMINAL_SCHEMA = "nominal_flat_gait_eval_v2"
+NOMINAL_SCHEMA = "nominal_flat_gait_eval_v3"
+FORCE_THRESHOLDS_N = (2., 5., 10.)
+FORCE_SAMPLE_DT = .005
+FORCE_SAMPLES_PER_CONTROL = 4
 NOMINAL_EVALUATOR_PATHS = (
     "scripts/evaluate_policy.py",
     "scripts/evaluation_capacity.py",
@@ -24,6 +28,15 @@ def nominal_evaluation_source_hash(root):
     return hashlib.sha256(b"".join(
         (root / relative).read_bytes()
         for relative in NOMINAL_EVALUATOR_PATHS)).hexdigest()
+
+
+def oldest_first_force_history(history):
+    """Reverse Isaac's newest-first history axis without changing other axes."""
+    if getattr(history, "ndim", 0) < 2:
+        raise ValueError("Force history requires an environment and history axis")
+    if hasattr(history, "flip"):
+        return history.flip(1)
+    return np.flip(np.asarray(history), axis=1).copy()
 
 
 def include_post_step_video_frame(step, was_active, done, stride=2):
@@ -66,15 +79,16 @@ def wilson(successes, n, z=1.959963984540054):
     return max(0., center - radius), min(1., center + radius)
 
 
-def complete_cycle_df(times, contacts, offset, eligible=None, period=PERIOD):
+def complete_cycle_df(times, contacts, offset, eligible=None, period=PERIOD,
+                      sample_dt=DT):
     """Integrate end-of-step contact over fully observed cycles after settling.
 
     Each sample at tick k represents (k-1,k]. Fractional walk phase offsets
     receive interval-overlap weights; the closing boundary must be observed.
     """
-    ticks = np.rint(np.asarray(times) / DT).astype(int)
-    count = round(period / DT)
-    if count < 1 or not np.isclose(count * DT, period):
+    ticks = np.rint(np.asarray(times) / sample_dt).astype(int)
+    count = round(period / sample_dt)
+    if count < 1 or not np.isclose(count * sample_dt, period):
         raise ValueError("Period must be a positive integer number of control steps")
     if not len(ticks):
         return []
@@ -97,14 +111,80 @@ def complete_cycle_df(times, contacts, offset, eligible=None, period=PERIOD):
     return values
 
 
+def topology_cycle_fraction(times, contacts, reference, gait, period=PERIOD,
+                            sample_dt=FORCE_SAMPLE_DT, tolerance=DT):
+    """Fraction of complete cycles retaining the 5 N hybrid-event topology."""
+    ticks = np.rint(np.asarray(times) / sample_dt).astype(int)
+    count = round(period / sample_dt)
+    tolerance_ticks = round(tolerance / sample_dt)
+    contacts = np.asarray(contacts, dtype=bool)
+    reference = np.asarray(reference, dtype=bool)
+    if (contacts.shape != reference.shape or contacts.shape != (len(ticks), 4)
+            or not np.array_equal(np.diff(ticks), np.ones(max(0, len(ticks) - 1), dtype=int))):
+        raise ValueError("Topology inputs must be aligned contiguous four-leg contacts")
+    if gait not in ("trot", "walk"):
+        raise ValueError("Unsupported gait topology")
+
+    eligible = good = 0
+    first_cycle = max(1, int(np.ceil((ticks[0] + 1) / count)))
+    last_cycle = int(np.floor(ticks[-1] / count))
+    for cycle in range(first_cycle, last_cycle):
+        lower, upper = cycle * count, (cycle + 1) * count
+        selected = (ticks >= lower - 1) & (ticks <= upper)
+        required = np.arange(lower - 1, upper + 1)
+        if not np.array_equal(ticks[selected], required):
+            continue
+        eligible += 1
+        candidate_events, reference_events = {}, {}
+        for label, values, destination in (
+                ("candidate", contacts[selected], candidate_events),
+                ("reference", reference[selected], reference_events)):
+            changes = values[1:] != values[:-1]
+            event_ticks = required[1:]
+            for leg in range(4):
+                rising = event_ticks[changes[:, leg] & values[1:, leg]]
+                falling = event_ticks[changes[:, leg] & ~values[1:, leg]]
+                rising = rising[rising > lower]
+                falling = falling[falling > lower]
+                destination[(leg, "rise")] = rising
+                destination[(leg, "fall")] = falling
+        cycle_good = True
+        for leg in range(4):
+            for event in ("rise", "fall"):
+                observed = candidate_events[(leg, event)]
+                baseline = reference_events[(leg, event)]
+                if (len(observed) != 1 or len(baseline) != 1
+                        or abs(int(observed[0]) - int(baseline[0])) > tolerance_ticks):
+                    cycle_good = False
+        if cycle_good and gait == "trot":
+            for events in (candidate_events, reference_events):
+                for event in ("rise", "fall"):
+                    if (abs(int(events[(0, event)][0]) - int(events[(3, event)][0]))
+                            > tolerance_ticks
+                            or abs(int(events[(1, event)][0]) - int(events[(2, event)][0]))
+                            > tolerance_ticks):
+                        cycle_good = False
+        if cycle_good and gait == "walk":
+            for event in ("rise", "fall"):
+                candidate_order = sorted(
+                    range(4), key=lambda leg: candidate_events[(leg, event)][0])
+                reference_order = sorted(
+                    range(4), key=lambda leg: reference_events[(leg, event)][0])
+                if candidate_order != reference_order:
+                    cycle_good = False
+        good += int(cycle_good)
+    return (good / eligible if eligible else np.nan), good, eligible
+
+
 def validate_manifest(directory):
     """Reject missing cells, mixed checkpoints, and unmatched trial plans."""
     directory = Path(directory)
     manifest = json.loads((directory / "evaluation_manifest.json").read_text())
     schema = manifest.get("schema")
-    if schema not in (None, NOMINAL_SCHEMA):
+    if schema not in (None, LEGACY_NOMINAL_SCHEMA, NOMINAL_SCHEMA):
         raise ValueError(f"Unsupported evaluation manifest schema: {schema}")
-    v2 = schema == NOMINAL_SCHEMA
+    versioned = schema in (LEGACY_NOMINAL_SCHEMA, NOMINAL_SCHEMA)
+    v3 = schema == NOMINAL_SCHEMA
     frame = manifest.get("step_width_frame", "world")
     if frame not in ("world", "body"):
         raise ValueError("Invalid manifest step_width_frame")
@@ -114,25 +194,25 @@ def validate_manifest(directory):
     ]
     if any(key not in manifest for key in required):
         raise ValueError("Evaluation manifest is missing required run identity")
-    if v2:
+    if versioned:
         v2_required = [
             "evaluator_sha256", "training_provenance_sha256",
             "split", "condition_reset_seed",
         ]
         if any(key not in manifest for key in v2_required):
-            raise ValueError("V2 manifest is missing required provenance")
+            raise ValueError("Versioned manifest is missing required provenance")
         if manifest.get("terrain") != "flat_ground":
-            raise ValueError("V2 evaluation must use flat ground")
+            raise ValueError("Versioned evaluation must use flat ground")
         if manifest.get("external_pushes") is not False:
-            raise ValueError("V2 evaluation must disable external pushes")
+            raise ValueError("Versioned evaluation must disable external pushes")
         if manifest["split"] not in ("validation", "test"):
             raise ValueError("Invalid held-out split")
     cells = manifest["expected_conditions"]
     conditions = [(cell["step_width"], cell["df"], cell["disturbed"]) for cell in cells]
     if len(conditions) != len(set(conditions)):
         raise ValueError("Duplicate evaluation condition in manifest")
-    if v2 and any(bool(cell["disturbed"]) for cell in cells):
-        raise ValueError("V2 evaluation conditions must all be nominal")
+    if versioned and any(bool(cell["disturbed"]) for cell in cells):
+        raise ValueError("Versioned evaluation conditions must all be nominal")
     names = [cell["filename"] for cell in cells]
     if not names or len(names) != len(set(names)):
         raise ValueError("Expected filenames must be nonempty and unique")
@@ -141,12 +221,12 @@ def validate_manifest(directory):
     seeds = np.asarray(manifest["seeds"])
     if not len(seeds) or len(seeds) != len(set(seeds.tolist())):
         raise ValueError("Trial seeds must be nonempty and unique")
-    if v2:
+    if versioned:
         low, high = ((10000, 1000000) if manifest["split"] == "validation"
                      else (1000000, 2000000))
         if seeds[0] < low or seeds[-1] >= high or not np.array_equal(
                 seeds, np.arange(seeds[0], seeds[0] + len(seeds))):
-            raise ValueError("V2 seeds must be contiguous and inside the held-out split")
+            raise ValueError("Versioned seeds must be contiguous and inside the held-out split")
         provenance_path = directory / "training_provenance.json"
         if (not provenance_path.is_file() or hashlib.sha256(
                 provenance_path.read_bytes()).hexdigest()
@@ -154,10 +234,10 @@ def validate_manifest(directory):
             raise ValueError("Archived training provenance hash mismatch")
         complete_path = directory / "evaluation_complete.json"
         if not complete_path.is_file():
-            raise ValueError("V2 evaluation is missing its completion marker")
+            raise ValueError("Versioned evaluation is missing its completion marker")
         complete = json.loads(complete_path.read_text())
         expected_complete = {
-            "complete": True, "schema": NOMINAL_SCHEMA,
+            "complete": True, "schema": schema,
             "conditions": len(names), "trials_per_condition": len(seeds),
             "source_sha256": manifest["source_sha256"],
             "checkpoint_sha256": manifest["checkpoint_sha256"],
@@ -166,7 +246,25 @@ def validate_manifest(directory):
                 manifest["training_provenance_sha256"],
         }
         if complete != expected_complete:
-            raise ValueError("V2 evaluation completion marker mismatch")
+            raise ValueError("Versioned evaluation completion marker mismatch")
+    if v3:
+        force_identity = {
+            "force_instrumented": True,
+            "force_field": "foot_force_norm_200hz", "force_units": "N",
+            "force_sample_dt": FORCE_SAMPLE_DT,
+            "force_samples_per_control": FORCE_SAMPLES_PER_CONTROL,
+            "force_history_order": "oldest_to_newest",
+            "force_leg_order": list(LEGS),
+            "contact_thresholds_n": list(FORCE_THRESHOLDS_N),
+            "policy_contact_threshold_n": 5.,
+            "terminal_force_capture": "recorder_pre_reset",
+            "scientific_role": "command_fidelity_prerequisite",
+            "not_closed_loop_chi_evidence": True,
+        }
+        for key, expected in force_identity.items():
+            if key not in manifest or not np.array_equal(
+                    np.asarray(manifest[key]), np.asarray(expected)):
+                raise ValueError(f"V3 force metadata mismatch: {key}")
     reference, push_reference = None, None
     for cell in cells:
         path = directory / cell["filename"]
@@ -179,7 +277,7 @@ def validate_manifest(directory):
             for key in ["period", "gait", "source_sha256", "checkpoint_sha256"]:
                 if key not in data or data[key].item() != manifest[key]:
                     raise ValueError(f"Run identity mismatch: {path.name}, {key}")
-            if v2:
+            if versioned:
                 identity = (
                     "schema", "terrain", "external_pushes", "split",
                     "evaluator_sha256", "training_provenance_sha256",
@@ -187,11 +285,31 @@ def validate_manifest(directory):
                 )
                 for key in identity:
                     if key not in data or data[key].item() != manifest[key]:
-                        raise ValueError(f"V2 identity mismatch: {path.name}, {key}")
+                        raise ValueError(f"Versioned identity mismatch: {path.name}, {key}")
                 forbidden = {"force", "planned_force", "push_plan"} & set(data.files)
                 if forbidden:
                     raise ValueError(
-                        f"V2 nominal archive contains push fields: {sorted(forbidden)}")
+                        f"Versioned nominal archive contains push fields: {sorted(forbidden)}")
+            if v3:
+                for key in force_identity:
+                    if key not in data or not np.array_equal(
+                            np.asarray(data[key]), np.asarray(manifest[key])):
+                        raise ValueError(f"V3 force identity mismatch: {path.name}, {key}")
+                valid = np.asarray(data["valid"], dtype=bool)
+                done = np.asarray(data["done"], dtype=bool)
+                forces = np.asarray(data[manifest["force_field"]])
+                preserved = np.asarray(data["terminal_force_preserved"], dtype=bool)
+                if forces.shape != valid.shape + (FORCE_SAMPLES_PER_CONTROL, 4):
+                    raise ValueError(f"Malformed 200 Hz force shape: {path.name}")
+                if forces.dtype.kind != "f" or not np.isfinite(forces).all() or (forces < 0).any():
+                    raise ValueError(f"Invalid 200 Hz forces: {path.name}")
+                if preserved.shape != valid.shape or not np.array_equal(
+                        preserved, valid & done):
+                    raise ValueError(f"Terminal force preservation mismatch: {path.name}")
+                contacts = np.asarray(data["contacts"], dtype=bool)
+                if contacts.shape != valid.shape + (4,) or not np.array_equal(
+                        forces[..., -1, :][valid] > 5., contacts[valid]):
+                    raise ValueError(f"5 N force/contact reconstruction mismatch: {path.name}")
             if "speed" in manifest:
                 if "command_speed" in data:
                     saved_speed = data["command_speed"].item()
@@ -308,6 +426,64 @@ def trial_rows(path):
             raise ValueError(f"Gait command metadata mismatch: {path}")
         settled = t >= period
         stance = settled[:, None] & ct
+        threshold_metrics = {}
+        if str(np.asarray(d.get("schema", "")).item()) == NOMINAL_SCHEMA:
+            force = np.asarray(d["foot_force_norm_200hz"])[mask, trial]
+            high_times = (t[:, None] + FORCE_SAMPLE_DT * np.arange(
+                1 - FORCE_SAMPLES_PER_CONTROL, 1)[None, :]).reshape(-1)
+            high_requested = np.repeat(requested, FORCE_SAMPLES_PER_CONTROL, axis=0)
+            high_settled = high_times >= period
+            contacts_by_threshold = {
+                threshold: (force > threshold).reshape(-1, 4)
+                for threshold in FORCE_THRESHOLDS_N
+            }
+            reference_contacts = contacts_by_threshold[5.]
+            for threshold in FORCE_THRESHOLDS_N:
+                tag = f"force{int(threshold)}n"
+                high_contacts = contacts_by_threshold[threshold]
+                last_contacts = force[:, -1] > threshold
+                topology_fraction, topology_good, topology_cycles = (
+                    topology_cycle_fraction(
+                        high_times, high_contacts, reference_contacts, gait,
+                        period=period))
+                threshold_metrics[f"{tag}_topology_fraction"] = topology_fraction
+                threshold_metrics[f"{tag}_topology_good_cycles"] = topology_good
+                threshold_metrics[f"{tag}_topology_cycles"] = topology_cycles
+                for leg, name in enumerate(LEGS):
+                    values = complete_cycle_df(
+                        high_times, high_contacts[:, leg],
+                        float(d["phase_offsets"][leg]), period=period,
+                        sample_dt=FORCE_SAMPLE_DT)
+                    threshold_metrics[f"{tag}_df_{name}"] = (
+                        float(np.mean(values)) if values else np.nan)
+                    threshold_metrics[f"{tag}_cycles_{name}"] = len(values)
+                    for state, label in ((True, "stance_recall"),
+                                         (False, "swing_recall")):
+                        selected = (high_requested[:, leg] == state) & high_settled
+                        threshold_metrics[f"{tag}_{label}_{name}"] = (
+                            float((high_contacts[selected, leg] == state).mean())
+                            if selected.any() else np.nan)
+                for axes, y in [
+                    ("world", feet[:, :, 1] - body[:, 1:2]),
+                    ("body", body_feet[mask, trial, :, 1]
+                     if body_feet is not None else None),
+                ]:
+                    width, mae = np.nan, np.nan
+                    if y is not None:
+                        leg_y = [
+                            float(y[settled & last_contacts[:, leg], leg].mean())
+                            if (settled & last_contacts[:, leg]).any() else np.nan
+                            for leg in range(4)
+                        ]
+                        width = float(
+                            np.mean([leg_y[0], leg_y[2]])
+                            - np.mean([leg_y[1], leg_y[3]]))
+                        errors = np.abs(
+                            y - cmds[:, 2:3] * np.array([1, -1, 1, -1]) / 2)
+                        selected = settled[:, None] & last_contacts
+                        mae = float(errors[selected].mean()) if selected.any() else np.nan
+                    threshold_metrics[f"{tag}_{axes}_achieved_width"] = width
+                    threshold_metrics[f"{tag}_{axes}_foot_lateral_mae"] = mae
         motion_metrics = {}
         motion_keys = ("body_lateral_velocity", "body_yaw_rate")
         present_motion = [key in d for key in motion_keys]
@@ -371,7 +547,8 @@ def trial_rows(path):
             "planned_push_duration": (float(d["push_plan"][trial, 5])
                                       if "push_plan" in d else 0.0),
             "planned_push_time": (float(d["push_plan"][trial, 2])
-                                  if "push_plan" in d else np.nan),
+                                      if "push_plan" in d else np.nan),
+            **threshold_metrics,
         }
         for leg, name in enumerate(LEGS):
             for values_key, prefix in [("contacts", "df"), ("desired", "schedule_df")]:
@@ -407,23 +584,66 @@ def analyze(directory):
     ):
         if key not in table:
             table[key] = np.nan
-    table["compliance_pass"] = (
-        table[[f"cycles_{x}" for x in LEGS]].ge(1).all(axis=1)
-        & table[[f"df_{x}" for x in LEGS]].sub(table.command_df, axis=0).abs().le(.05).all(axis=1)
-        & table[[f"swing_recall_{x}" for x in LEGS]].ge(.9).all(axis=1)
-        & table[[f"stance_recall_{x}" for x in LEGS]].ge(.9).all(axis=1)
-        & table.settled_samples.ge(np.rint(table.period / DT))
-        & table.foot_lateral_mae.le(.015)
+    invariant_locomotion_pass = (
+        table.settled_samples.ge(np.rint(table.period / DT))
         & table.lateral_rmse.le(.10)
         & table.max_lateral_deviation.le(.20)
         & table.heading_rmse_rad.le(.10)
         & table.max_abs_heading_rad.le(.25)
         & table.world_lateral_velocity_rmse.le(.10)
         & table.body_yaw_rate_rmse.le(.50)
-        & (table.achieved_width - table.command_width).abs().le(.03)
         & (table.forward_speed - table.command_speed).abs().le(.04))
+    primary_contact_pass = (
+        table[[f"cycles_{x}" for x in LEGS]].ge(1).all(axis=1)
+        & table[[f"df_{x}" for x in LEGS]].sub(table.command_df, axis=0).abs().le(.05).all(axis=1)
+        & table[[f"swing_recall_{x}" for x in LEGS]].ge(.9).all(axis=1)
+        & table[[f"stance_recall_{x}" for x in LEGS]].ge(.9).all(axis=1)
+        & table.foot_lateral_mae.le(.015)
+        & (table.achieved_width - table.command_width).abs().le(.03)
+    )
+    # Preserve the preregistered frozen 50 Hz/5 N gate exactly.
+    table["compliance_pass"] = invariant_locomotion_pass & primary_contact_pass
+    endpoint_pass = table.success.eq(1) & table.failure.eq(0)
+    force_instrumented = all(
+        f"force{int(threshold)}n_df_{leg}" in table
+        for threshold in FORCE_THRESHOLDS_N for leg in LEGS)
+    if force_instrumented:
+        for threshold in FORCE_THRESHOLDS_N:
+            tag = f"force{int(threshold)}n"
+            table[f"{tag}_achieved_df"] = table[
+                [f"{tag}_df_{leg}" for leg in LEGS]].mean(axis=1)
+            table[f"{tag}_df_max_abs_error"] = table[
+                [f"{tag}_df_{leg}" for leg in LEGS]
+            ].sub(table.command_df, axis=0).abs().max(axis=1)
+            table[f"{tag}_compliance_pass"] = (
+                invariant_locomotion_pass & endpoint_pass
+                & table[[f"{tag}_cycles_{leg}" for leg in LEGS]].ge(1).all(axis=1)
+                & table[[f"{tag}_df_{leg}" for leg in LEGS]]
+                    .sub(table.command_df, axis=0).abs().le(.05).all(axis=1)
+                & table[[f"{tag}_swing_recall_{leg}" for leg in LEGS]]
+                    .ge(.9).all(axis=1)
+                & table[[f"{tag}_stance_recall_{leg}" for leg in LEGS]]
+                    .ge(.9).all(axis=1)
+                & table[f"{tag}_topology_fraction"].ge(.9)
+                & table[f"{tag}_{table.step_width_frame.iloc[0]}_foot_lateral_mae"].le(.015)
+                & (table[f"{tag}_{table.step_width_frame.iloc[0]}_achieved_width"]
+                   - table.command_width).abs().le(.03))
+        for leg in LEGS:
+            threshold_columns = [
+                f"force{int(threshold)}n_df_{leg}"
+                for threshold in FORCE_THRESHOLDS_N]
+            table[f"force_df_span_{leg}"] = (
+                table[threshold_columns].max(axis=1)
+                - table[threshold_columns].min(axis=1))
+        table["force_df_span_pass"] = table[
+            [f"force_df_span_{leg}" for leg in LEGS]
+        ].le(DT / table.period, axis=0).all(axis=1)
+        table["force_robust_trial_pass"] = (
+            table[[f"force{int(threshold)}n_compliance_pass"
+                   for threshold in FORCE_THRESHOLDS_N]].all(axis=1)
+            & table.force_df_span_pass)
     table.to_csv(directory / "trials.csv", index=False)
-    records = []
+    records, threshold_records = [], []
     for (width, df, disturbed), group in table.groupby(["step_width", "command_df", "disturbed"]):
         lo, hi = wilson(int(group.success.sum()), len(group))
         record = {"step_width": width, "command_df": df, "disturbed": disturbed, "n": len(group),
@@ -448,9 +668,76 @@ def analyze(directory):
             record[f"trials_with_cycles_{leg}"] = int((group[f"cycles_{leg}"] > 0).sum())
         record["compliant_trial_fraction"] = group.compliance_pass.mean()
         record["compliance_screen_pass"] = bool(record["compliant_trial_fraction"] >= .8)
+        if force_instrumented:
+            threshold_screens = []
+            frame_name = group.step_width_frame.iloc[0]
+            for threshold in FORCE_THRESHOLDS_N:
+                tag = f"force{int(threshold)}n"
+                fraction = group[f"{tag}_compliance_pass"].mean()
+                record[f"{tag}_compliant_trial_fraction"] = fraction
+                record[f"{tag}_compliance_screen_pass"] = bool(fraction >= .8)
+                record[f"{tag}_achieved_df"] = group[f"{tag}_achieved_df"].mean()
+                record[f"{tag}_achieved_width"] = group[
+                    f"{tag}_{frame_name}_achieved_width"].mean()
+                record[f"{tag}_topology_fraction"] = group[
+                    f"{tag}_topology_fraction"].mean()
+                topology_good = int(group[f"{tag}_topology_good_cycles"].sum())
+                topology_cycles = int(group[f"{tag}_topology_cycles"].sum())
+                pooled_topology = (
+                    topology_good / topology_cycles if topology_cycles else np.nan)
+                record[f"{tag}_topology_good_cycles"] = topology_good
+                record[f"{tag}_topology_cycles"] = topology_cycles
+                record[f"{tag}_pooled_topology_fraction"] = pooled_topology
+                threshold_records.append({
+                    "step_width": width, "command_df": df,
+                    "threshold_n": threshold,
+                    "achieved_df": group[f"{tag}_achieved_df"].mean(),
+                    "max_per_leg_df_abs_error": group[
+                        [f"{tag}_df_{leg}" for leg in LEGS]
+                    ].sub(group.command_df, axis=0).abs().max(axis=1).mean(),
+                    "min_stance_recall": group[
+                        [f"{tag}_stance_recall_{leg}" for leg in LEGS]
+                    ].min(axis=1).mean(),
+                    "min_swing_recall": group[
+                        [f"{tag}_swing_recall_{leg}" for leg in LEGS]
+                    ].min(axis=1).mean(),
+                    "achieved_width_error": (
+                        group[f"{tag}_{frame_name}_achieved_width"]
+                        - group.command_width).abs().mean(),
+                    "compliant_trial_fraction": fraction,
+                    "topology_fraction": group[f"{tag}_topology_fraction"].mean(),
+                    "topology_good_cycles": topology_good,
+                    "topology_cycles": topology_cycles,
+                    "pooled_topology_fraction": pooled_topology,
+                    "threshold_screen_pass": bool(fraction >= .8),
+                })
+                threshold_screens.append(bool(fraction >= .8))
+            record["force_df_span_trial_fraction"] = group.force_df_span_pass.mean()
+            record["force_robust_trial_fraction"] = group.force_robust_trial_pass.mean()
+            record["force_threshold_conclusion_unchanged"] = bool(
+                all(value == record["force5n_compliance_screen_pass"]
+                    for value in threshold_screens))
+            record["force5n_200hz_vs_frozen50hz_unchanged"] = bool(
+                record["force5n_compliance_screen_pass"]
+                == record["compliance_screen_pass"])
+            record["combined_cell_pass"] = combined_cell_acceptance(
+                record, threshold_screens)
         records.append(record)
     summary = pd.DataFrame(records)
     summary.to_csv(directory / "summary.csv", index=False)
+    if threshold_records:
+        threshold_table = pd.DataFrame(threshold_records)
+        span_lookup = summary.set_index(["step_width", "command_df"])[
+            "force_df_span_trial_fraction"]
+        threshold_table["df_span_trial_fraction"] = [
+            span_lookup.loc[(row.step_width, row.command_df)]
+            for row in threshold_table.itertuples()]
+        threshold_table["combined_cell_pass"] = [
+            bool(summary[(summary.step_width == row.step_width)
+                         & (summary.command_df == row.command_df)]
+                 .combined_cell_pass.iloc[0])
+            for row in threshold_table.itertuples()]
+        threshold_table.to_csv(directory / "force_threshold_summary.csv", index=False)
     rng, contrasts = np.random.default_rng(8102026), []
     for (width, disturbed), group in table.groupby(["step_width", "disturbed"]):
         pivot = group.pivot(index="seed", columns="command_df", values="success")
@@ -467,7 +754,15 @@ def analyze(directory):
             "success_difference": float(diffs.mean()), "ci_low": float(np.quantile(bootstrap, .025)),
             "ci_high": float(np.quantile(bootstrap, .975)), "bootstrap_degenerate": bool(np.ptp(bootstrap) == 0),
             "conservative_ci_low": high_ci[0] - low_ci[1], "conservative_ci_high": high_ci[1] - low_ci[0]})
-    (directory / "paired_contrasts.json").write_text(json.dumps(contrasts, indent=2))
+    is_v3 = json.loads((directory / "evaluation_manifest.json").read_text()).get(
+        "schema") == NOMINAL_SCHEMA
+    contrast_name = (
+        "endpoint_success_diagnostics.json" if is_v3 else "paired_contrasts.json")
+    (directory / contrast_name).write_text(json.dumps({
+        "scientific_role": "command_fidelity_prerequisite",
+        "not_closed_loop_chi_evidence": True,
+        "contrasts": contrasts,
+    } if is_v3 else contrasts, indent=2))
 
     def save(fig, name):
         fig.tight_layout()
@@ -486,7 +781,7 @@ def analyze(directory):
         ax.set(title="Pushes" if disturbed else "Nominal", xlabel="Commanded DF",
                ylabel="Straight crossing success (95% Wilson CI)", ylim=(-.03, 1.03))
         ax.legend(title=f"{width_frame.title()}-axis step width")
-    save(fig, "success_vs_df")
+    save(fig, "endpoint_success_vs_df" if is_v3 else "success_vs_df")
     fig, axes = plt.subplots(1, len(conditions), figsize=(5 * len(conditions), 3.8), squeeze=False)
     for ax, disturbed in zip(axes[0], conditions):
         grid = summary[summary.disturbed == disturbed].pivot(index="step_width", columns="command_df", values="success_rate")
@@ -537,3 +832,89 @@ def analyze(directory):
     save(fig, "straight_path_tracking")
     print(summary.to_string(index=False))
     return summary
+
+
+def nominal_study_readiness(trot_directory, walk_directory):
+    """Validate the exact 20-cell command-fidelity prerequisite study."""
+    import pandas as pd
+    directories = [Path(trot_directory), Path(walk_directory)]
+    manifests = []
+    reset_identities = []
+    for directory in directories:
+        files = validate_manifest(directory)
+        manifest = json.loads((directory / "evaluation_manifest.json").read_text())
+        manifests.append(manifest)
+        with np.load(files[0]) as data:
+            reset_identities.append({
+                "reset_plan": np.asarray(data["reset_plan"]),
+                "initial_root": np.asarray(data["initial_root"]),
+                "initial_joints": np.asarray(data["initial_joints"]),
+                "stance_start": np.asarray(data["stance_start"])[0],
+            })
+    if {manifest["gait"] for manifest in manifests} != {"trot", "walk"}:
+        raise ValueError("Study requires one trot and one four-beat walk evaluation")
+    for manifest in manifests:
+        if (manifest.get("schema") != NOMINAL_SCHEMA
+                or not np.isclose(manifest["period"], .48)
+                or not np.isclose(manifest["speed"], .30)):
+            raise ValueError("Study requires force-instrumented period .48/speed .30 data")
+    for key in (
+        "source_sha256", "checkpoint_sha256", "evaluator_sha256", "seeds",
+        "training_provenance_sha256", "split", "condition_reset_seed",
+        "step_width_frame",
+    ):
+        if manifests[0][key] != manifests[1][key]:
+            raise ValueError(f"Study provenance mismatch: {key}")
+    validate_matched_study_resets(*reset_identities)
+    expected = {
+        ("trot", width, duty)
+        for width in (.1, .2, .3, .4, .5)
+        for duty in (.5, .625, .75)
+    } | {("walk", width, .75) for width in (.1, .2, .3, .4, .5)}
+    observed = {
+        (manifest["gait"], float(cell["step_width"]), float(cell["df"]))
+        for manifest in manifests for cell in manifest["expected_conditions"]
+    }
+    if observed != expected:
+        raise ValueError(f"Study cell mismatch: missing={expected-observed}, extra={observed-expected}")
+    if len(manifests[0]["seeds"]) != 64:
+        raise ValueError("Study requires exactly 64 held-out trials per cell")
+    summaries = [pd.read_csv(directory / "summary.csv") for directory in directories]
+    combined = pd.concat(summaries, ignore_index=True)
+    if (len(combined) != 20 or "combined_cell_pass" not in combined
+            or not combined.n.eq(64).all()):
+        raise ValueError("Study summaries must contain exactly 20 gated cells")
+    passed = bool(combined.combined_cell_pass.astype(bool).all())
+    return {
+        "ready": passed, "cells": 20,
+        "passed_cells": int(combined.combined_cell_pass.astype(bool).sum()),
+        "scientific_role": "command_fidelity_prerequisite",
+        "not_closed_loop_chi_evidence": True,
+        "checkpoint_sha256": manifests[0]["checkpoint_sha256"],
+        "evaluator_sha256": manifests[0]["evaluator_sha256"],
+    }
+
+
+def validate_matched_study_resets(first, second):
+    """Reject cross-gait comparisons with different initial populations."""
+    required = ("reset_plan", "initial_root", "initial_joints", "stance_start")
+    if any(key not in first or key not in second for key in required):
+        raise ValueError("Study reset identity is incomplete")
+    for key in required:
+        left, right = np.asarray(first[key]), np.asarray(second[key])
+        matches = (np.array_equal(left, right) if key == "stance_start"
+                   else np.allclose(left, right, atol=1e-7))
+        if not matches:
+            raise ValueError(
+                f"Study gait comparisons require matched reset identity: {key}")
+
+
+def combined_cell_acceptance(record, threshold_screens):
+    """Apply the frozen cell-level prerequisite gates without averaging them."""
+    return bool(
+        record["compliance_screen_pass"]
+        and all(threshold_screens)
+        and all(record[f"force{int(threshold)}n_pooled_topology_fraction"] >= .9
+                for threshold in FORCE_THRESHOLDS_N)
+        and record["force_df_span_trial_fraction"] >= .9
+        and record["force_robust_trial_fraction"] >= .8)

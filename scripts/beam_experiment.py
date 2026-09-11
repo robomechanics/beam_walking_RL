@@ -10,7 +10,8 @@ faulthandler.dump_traceback_later(90, repeat=True)
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "source/beam_walking"))
 from beam_walking.experiment.protocol import (GAITS, GAIT_OFFSETS, PERIOD_TICKS, CONTROL_DT,
-    MIN_SWING_STEPS, STEP_WIDTH_FRAME, validate_scientific_gait_duties)
+    CYCLE_STEPS, MIN_SWING_STEPS, STEP_WIDTH_FRAME, validate_scientific_gait_duties,
+    advance_phase_ticks)
 from beam_walking.experiment.stability import training_source_hash
 from isaaclab.app import AppLauncher
 
@@ -25,6 +26,8 @@ parser.add_argument("--output", type=Path, default=ROOT / "results/ppo_flat")
 parser.add_argument("--steps", type=int, default=200)
 parser.add_argument("--stance_start_probability", type=float, default=.10)
 parser.add_argument("--video", action="store_true")
+parser.add_argument("--no_watcher", action="store_true",
+                    help="Disable the automatic read-only training watcher")
 parser.add_argument("--camera_env", type=int, default=0)
 parser.add_argument("--dfs", type=float, nargs="+")
 parser.add_argument("--gait", choices=GAITS, default="trot", help="Fixed gait for one evaluation grid")
@@ -139,7 +142,8 @@ def main():
         "training_source_sha256": training_source_hash(ROOT),
         "training_num_envs": args.num_envs,
         "training_iterations_requested": args.iterations,
-        "checkpoint_selection_rule": "final_requested_iteration"}
+        "checkpoint_selection_rule": "final_requested_iteration",
+        "watcher_enabled": bool(args.mode == "train" and not args.no_watcher)}
     metadata["fresh_training"] = bool(
         args.mode == "train" and args.checkpoint is None)
     metadata["training_lineage_id"] = (
@@ -175,29 +179,78 @@ def main():
             ])
         gain_ratios = torch.cat(
             [value.reshape(-1) for value in gain_ratios])
-        if not bool(torch.all(
-            (gain_ratios >= .90 - 1e-6)
-            & (gain_ratios <= 1.10 + 1e-6)
-        )):
-            raise RuntimeError("Startup motor gain randomization left [0.90,1.10]")
+        if not bool(torch.allclose(
+                gain_ratios, torch.ones_like(gain_ratios),
+                rtol=0., atol=1e-6)):
+            raise RuntimeError("Paper-correlation run must use nominal Kp/Kd gains")
+        if args.steps < CYCLE_STEPS:
+            raise ValueError(
+                f"Chronology smoke requires at least one {CYCLE_STEPS}-step gait cycle")
         first_contacts = None
         first_failures = None
+        phase_tick_history = []
+        reset_history = []
         for _ in range(args.steps):
-            obs, reward, done, info = wrapped.step(torch.zeros(args.num_envs, 12, device=env.device))
+            c = command(env)
+            before_ticks = c.phase_ticks.clone()
+            before_periods = c.period_ticks.clone()
+            before_phase = c.phase.clone()
+            before_commands = c.values.clone()
+            obs, reward, done, info = wrapped.step(
+                torch.zeros(args.num_envs, 12, device=env.device))
+            done_mask = done.to(torch.bool)
             assert torch.isfinite(obs["policy"]).all() and torch.isfinite(reward).all()
+            force_shape = tuple(
+                env.scene["contact_forces"].data.net_forces_w_history[
+                    :, :, c.sensor_feet].norm(dim=-1).shape)
+            if force_shape != (args.num_envs, cfg.decimation, 4):
+                raise RuntimeError(
+                    f"Expected high-rate foot forces {(args.num_envs, cfg.decimation, 4)}, "
+                    f"got {force_shape}")
+            if any(not bool(torch.isfinite(value)) for key, value in
+                   env.training_metrics.items() if key.startswith("Gait/substep_")):
+                raise RuntimeError("High-rate contact training metrics are not finite")
+            torch.testing.assert_close(env.transition["phase"], before_phase)
+            torch.testing.assert_close(env.transition["commands"], before_commands)
+            expected_ticks = advance_phase_ticks(
+                before_ticks, before_periods, done_mask)
+            torch.testing.assert_close(command(env).phase_ticks, expected_ticks)
+            changed = (command(env).values != before_commands).any(dim=1)
+            assert not bool((changed & ~done_mask & (expected_ticks != 0)).any()), (
+                "A continuing environment changed command away from a cycle boundary")
+            phase_tick_history.append(before_ticks.cpu())
+            reset_history.append(done_mask.cpu())
             if first_contacts is None:
                 first_contacts = env.transition["contacts"].sum(dim=1).cpu().tolist()
                 first_failures = env.transition["failure"].cpu().tolist()
                 if args.stance_start_probability == 1:
                     assert all(count == 4 for count in first_contacts), "Grounded reset did not start with four supported feet"
                     assert not any(first_failures), "Grounded reset spuriously failed"
+        history = torch.stack(phase_tick_history[:CYCLE_STEPS])
+        resets = torch.stack(reset_history[:CYCLE_STEPS])
+        expected_cycle = torch.arange(CYCLE_STEPS)[:, None]
+        candidates = (~resets).all(dim=0) & (history == expected_cycle).all(dim=0)
+        if not bool(candidates.any()):
+            raise RuntimeError("Chronology smoke found no complete surviving phase 0..23 cycle")
+        chronology_env = int(candidates.nonzero()[0])
+        reset_obs, _ = wrapped.reset()
+        if not bool((command(env).phase_ticks == 0).all()):
+            raise RuntimeError("Explicit smoke reset did not return every environment to phase zero")
+        assert torch.isfinite(reset_obs["policy"]).all()
         (args.output / "smoke_checks.json").write_text(json.dumps({
             "first_contact_counts": first_contacts, "first_failures": first_failures,
             "steps": args.steps, "finite_observations_rewards": True,
             "policy_observation_dimension": 68,
             "action_dimension": 12,
+            "phase_alignment_verified": True,
+            "complete_cycle_env": chronology_env,
+            "complete_cycle_phase_ticks": history[:, chronology_env].tolist(),
+            "explicit_reset_phase_zero": True,
+            "foot_force_history_shape": list(force_shape),
+            "high_rate_contact_reward_finite": True,
             "motor_gain_ratio_min": float(gain_ratios.min().cpu()),
-            "motor_gain_ratio_max": float(gain_ratios.max().cpu())}, indent=2))
+            "motor_gain_ratio_max": float(gain_ratios.max().cpu()),
+            "motor_gain_randomization": False}, indent=2))
         print("SMOKE_OK", obs["policy"].shape, "feet", command(env).feet, flush=True)
     else:
         runner = OnPolicyRunner(wrapped, agent.to_dict(), log_dir=str(args.output), device=env.device)
@@ -231,16 +284,16 @@ def main():
             started = time.perf_counter()
             watcher = None
             watcher_log = None
-            if args.mode == "train":
+            if args.mode == "train" and not args.no_watcher:
                 watcher_log = (args.output / "watcher.log").open("w")
                 watcher = subprocess.Popen([
                     sys.executable, str(ROOT / "scripts/watch_training.py"),
                     "--run", str(args.output.resolve()), "--output", str((args.output / "watcher_report.json").resolve()),
-                    "--watch", "--pid", str(os.getpid()), "--interval", "20", "--report_interval", "3600"],
+                    "--watch", "--pid", str(os.getpid()), "--interval", "20", "--report_interval", "600"],
                     stdout=watcher_log, stderr=subprocess.STDOUT)
                 (args.output / "watcher_process.json").write_text(json.dumps({
-                    "pid": watcher.pid, "training_pid": os.getpid(), "report_interval_s": 3600,
-                    "reports": "Initial, hourly, and final", "automatically_started": True}, indent=2))
+                    "pid": watcher.pid, "training_pid": os.getpid(), "report_interval_s": 600,
+                    "reports": "Initial, every 10 minutes, and final", "automatically_started": True}, indent=2))
             try:
                 runner.learn(num_learning_iterations=remaining, init_at_random_ep_len=False)
             finally:

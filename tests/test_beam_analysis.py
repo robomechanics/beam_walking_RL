@@ -13,9 +13,12 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "source/beam_walking"))
 from beam_walking.experiment.analysis import (
-    NOMINAL_SCHEMA, analyze, complete_cycle_df,
-    include_post_step_video_frame, nominal_archive_payload, trial_rows,
-    validate_manifest, wilson,
+    LEGACY_NOMINAL_SCHEMA, NOMINAL_SCHEMA, analyze,
+    combined_cell_acceptance, complete_cycle_df,
+    include_post_step_video_frame, nominal_archive_payload,
+    oldest_first_force_history, trial_rows,
+    topology_cycle_fraction, validate_manifest, validate_matched_study_resets,
+    wilson,
 )
 from beam_walking.experiment.protocol import leg_phase, contact_score, discrete_stance_fraction, GAIT_OFFSETS
 
@@ -94,6 +97,41 @@ def declare_body_run(directory, manifest, yaw=.0, roll=.0):
 
 
 class MetricsTest(unittest.TestCase):
+    def test_force_history_is_archived_oldest_first(self):
+        newest_first = np.asarray([[[4.], [3.], [2.], [1.]]])
+        np.testing.assert_array_equal(
+            oldest_first_force_history(newest_first),
+            np.asarray([[[1.], [2.], [3.], [4.]]]))
+        with self.assertRaisesRegex(ValueError, "history axis"):
+            oldest_first_force_history(np.ones(4))
+
+    def test_study_reset_matching_rejects_stance_or_joint_changes(self):
+        identity = {
+            "reset_plan": np.zeros((3, 2)),
+            "initial_root": np.zeros((3, 13)),
+            "initial_joints": np.zeros((3, 12)),
+            "stance_start": np.asarray([True, False, False]),
+        }
+        validate_matched_study_resets(identity, {
+            key: value.copy() for key, value in identity.items()})
+        for key in ("initial_joints", "stance_start"):
+            changed = {name: value.copy() for name, value in identity.items()}
+            changed[key].flat[0] = not changed[key].flat[0] if key == "stance_start" else 1.
+            with self.assertRaisesRegex(ValueError, key):
+                validate_matched_study_resets(identity, changed)
+
+    def test_combined_cell_rejects_sub90_pooled_topology(self):
+        record = {
+            "compliance_screen_pass": True,
+            "force_df_span_trial_fraction": .95,
+            "force_robust_trial_fraction": .85,
+            **{f"force{int(value)}n_pooled_topology_fraction": .95
+               for value in (2., 5., 10.)},
+        }
+        self.assertTrue(combined_cell_acceptance(record, [True, True, True]))
+        record["force10n_pooled_topology_fraction"] = .89
+        self.assertFalse(combined_cell_acceptance(record, [True, True, True]))
+
     def test_nominal_archive_separates_command_and_measured_speed(self):
         trace = np.asarray([.27, .31], dtype=np.float32)
         payload = nominal_archive_payload(
@@ -115,7 +153,7 @@ class MetricsTest(unittest.TestCase):
             (directory / "training_provenance.json").write_bytes(training_bytes)
             training_hash = hashlib.sha256(training_bytes).hexdigest()
             manifest.update({
-                "schema": NOMINAL_SCHEMA, "speed": .30,
+                "schema": LEGACY_NOMINAL_SCHEMA, "speed": .30,
                 "terrain": "flat_ground", "external_pushes": False,
                 "split": "validation", "condition_reset_seed": 3010000,
                 "evaluator_sha256": "synthetic-evaluator",
@@ -129,7 +167,7 @@ class MetricsTest(unittest.TestCase):
             for key in ("force", "planned_force"):
                 payload.pop(key)
             payload.update({
-                "schema": NOMINAL_SCHEMA, "command_speed": .30,
+                "schema": LEGACY_NOMINAL_SCHEMA, "command_speed": .30,
                 "terrain": "flat_ground", "external_pushes": False,
                 "split": "validation", "condition_reset_seed": 3010000,
                 "evaluator_sha256": "synthetic-evaluator",
@@ -137,7 +175,7 @@ class MetricsTest(unittest.TestCase):
             })
             np.savez_compressed(path, **payload)
             complete = {
-                "complete": True, "schema": NOMINAL_SCHEMA,
+                "complete": True, "schema": LEGACY_NOMINAL_SCHEMA,
                 "conditions": 1, "trials_per_condition": 3,
                 "source_sha256": manifest["source_sha256"],
                 "checkpoint_sha256": manifest["checkpoint_sha256"],
@@ -175,6 +213,86 @@ class MetricsTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "completion marker"):
                 validate_manifest(directory)
 
+    def test_v3_force_archive_identity_and_terminal_preservation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            manifest = synthetic_run(directory, widths=(.3,), dfs=(.625,))
+            path = directory / manifest["expected_conditions"][0]["filename"]
+            training_bytes = b'{"synthetic": true}'
+            (directory / "training_provenance.json").write_bytes(training_bytes)
+            training_hash = hashlib.sha256(training_bytes).hexdigest()
+            force_identity = {
+                "force_instrumented": True,
+                "force_field": "foot_force_norm_200hz", "force_units": "N",
+                "force_sample_dt": .005, "force_samples_per_control": 4,
+                "force_history_order": "oldest_to_newest",
+                "force_leg_order": ["FL", "FR", "RL", "RR"],
+                "contact_thresholds_n": [2., 5., 10.],
+                "policy_contact_threshold_n": 5.,
+                "terminal_force_capture": "recorder_pre_reset",
+                "scientific_role": "command_fidelity_prerequisite",
+                "not_closed_loop_chi_evidence": True,
+            }
+            manifest.update({
+                "schema": NOMINAL_SCHEMA, "speed": .30,
+                "terrain": "flat_ground", "external_pushes": False,
+                "split": "validation", "condition_reset_seed": 3010000,
+                "evaluator_sha256": "synthetic-evaluator",
+                "training_provenance_sha256": training_hash,
+                **force_identity,
+            })
+            with np.load(path) as data:
+                payload = {key: data[key] for key in data.files}
+            payload["body_forward_velocity"] = payload.pop("speed")
+            payload["reset_plan"] = payload.pop("push_plan")
+            payload.pop("force")
+            payload.pop("planned_force")
+            valid, done = payload["valid"], payload["done"]
+            payload["foot_force_norm_200hz"] = (
+                np.repeat(payload["contacts"][:, :, None, :], 4, axis=2)
+                * np.asarray([3., 7., 12., 12.])[None, None, :, None]
+            ).astype(np.float32)
+            payload["terminal_force_preserved"] = valid & done
+            payload.update({
+                "schema": NOMINAL_SCHEMA, "command_speed": .30,
+                "terrain": "flat_ground", "external_pushes": False,
+                "split": "validation", "condition_reset_seed": 3010000,
+                "evaluator_sha256": "synthetic-evaluator",
+                "training_provenance_sha256": training_hash,
+                **{key: np.asarray(value) for key, value in force_identity.items()},
+            })
+            np.savez_compressed(path, **payload)
+            complete = {
+                "complete": True, "schema": NOMINAL_SCHEMA,
+                "conditions": 1, "trials_per_condition": 3,
+                "source_sha256": manifest["source_sha256"],
+                "checkpoint_sha256": manifest["checkpoint_sha256"],
+                "evaluator_sha256": manifest["evaluator_sha256"],
+                "training_provenance_sha256": training_hash,
+            }
+            (directory / "evaluation_manifest.json").write_text(json.dumps(manifest))
+            (directory / "evaluation_complete.json").write_text(json.dumps(complete))
+            self.assertEqual(validate_manifest(directory), [path])
+            rows = trial_rows(path)
+            for row in rows:
+                self.assertGreater(row["force2n_df_FL"], row["force10n_df_FL"])
+            with contextlib.redirect_stdout(io.StringIO()):
+                summary = analyze(directory)
+            self.assertIn("combined_cell_pass", summary)
+            self.assertFalse(bool(summary.combined_cell_pass.iloc[0]))
+            self.assertTrue((directory / "force_threshold_summary.csv").is_file())
+            self.assertTrue((directory / "endpoint_success_diagnostics.json").is_file())
+
+            payload["terminal_force_preserved"][-1, 0] = False
+            np.savez_compressed(path, **payload)
+            with self.assertRaisesRegex(ValueError, "Terminal force preservation"):
+                validate_manifest(directory)
+            payload["terminal_force_preserved"][-1, 0] = True
+            payload["foot_force_norm_200hz"][-1, 0, -1, 0] = 0.
+            np.savez_compressed(path, **payload)
+            with self.assertRaisesRegex(ValueError, "reconstruction"):
+                validate_manifest(directory)
+
     def test_video_frame_gate_excludes_terminal_reset_frame(self):
         self.assertTrue(include_post_step_video_frame(0, True, False))
         self.assertFalse(include_post_step_video_frame(1, True, False))
@@ -196,6 +314,24 @@ class MetricsTest(unittest.TestCase):
                         self.assertGreater(len(values), 4)
                         expected = desired[:count, leg].mean()
                         np.testing.assert_allclose(values, expected, atol=1e-7)
+
+    def test_high_rate_topology_rejects_contact_chatter(self):
+        count = round(.48 / .005)
+        ticks = torch.arange(1, count * 6 + 1)
+        for gait_id, gait in enumerate(("trot", "walk")):
+            phase = leg_phase(
+                ticks, torch.full_like(ticks, count),
+                torch.full_like(ticks, gait_id)).numpy()
+            reference = phase < (.625 if gait == "trot" else .75)
+            fraction, good, eligible = topology_cycle_fraction(
+                ticks.numpy() * .005, reference, reference, gait)
+            self.assertEqual(fraction, 1.)
+            self.assertEqual(good, eligible)
+            chatter = reference.copy()
+            chatter[count * 2 + 10, 0] = ~chatter[count * 2 + 10, 0]
+            fraction, _, _ = topology_cycle_fraction(
+                ticks.numpy() * .005, chatter, reference, gait)
+            self.assertLess(fraction, 1.)
 
     def test_terminal_boundary_and_missing_tick(self):
         ticks = np.arange(25, 48)

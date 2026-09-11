@@ -119,6 +119,9 @@ def metric_group(tag):
     lower = tag.lower()
     gait_tag = lower.removeprefix("episode/")
     if gait_tag in {f"gait/{name}" for name in ["contact_accuracy", "stance_recall", "swing_recall",
+                                               "substep_contact_accuracy", "substep_stance_recall",
+                                               "substep_swing_recall", "stance_force_15_fraction",
+                                               "swing_force_2_fraction", "substep_contact_margin_score",
                                                "foot_lateral_rmse", "body_foot_lateral_rmse", "heading_rmse",
                                                "forward_speed", "speed_mae", "lateral_rmse",
                                                "body_lateral_velocity_rmse", "body_yaw_rate_rmse"]}:

@@ -14,14 +14,16 @@ faulthandler.enable()
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "source/beam_walking"))
 from beam_walking.experiment.protocol import (
-    CONTROL_DT, GAITS, MIN_SWING_STEPS, PERIOD_TICKS,
+    CONTROL_DT, GAITS, MIN_SWING_STEPS, PERIOD_TICKS, leg_phase,
 )
 from beam_walking.experiment.stability import (
-    AUGMENTED_DIM, CONFIRMATORY_TRAINING_ITERATIONS, FROZEN_GATE_LIMITS,
+    AUGMENTED_DIM, CONFIRMATORY_TRAINING_ITERATIONS, ENERGY_MEASUREMENT_CYCLES,
+    ENERGY_SCHEMA, FROZEN_GATE_LIMITS, PHYSICS_DT,
     ORBITAL_AUGMENTED_INDICES, RAW_STATE_DIM, STATE_SCALES,
-    canonical_reference_states, confirmatory_protocol,
+    canonical_physical_condition_keys, canonical_reference_states,
+    confirmatory_protocol,
     construct_master_stencil, evaluation_source_hash, master_stencil_layout,
-    state_delta, training_source_hash,
+    mechanical_cot, state_delta, training_source_hash,
 )
 from isaaclab.app import AppLauncher
 
@@ -99,6 +101,10 @@ capacity = check_capacity("evaluate", num_envs, args.device or "cuda:0", False)
 app = AppLauncher(args).app
 
 import torch
+from isaaclab.managers import (
+    DatasetExportMode, RecorderManagerBaseCfg, RecorderTerm, RecorderTermCfg,
+)
+from isaaclab.utils import configclass
 from isaaclab_rl.rsl_rl import RslRlVecEnvWrapper
 from rsl_rl.runners import OnPolicyRunner
 from beam_walking.experiment.task import (
@@ -106,6 +112,58 @@ from beam_walking.experiment.task import (
 )
 
 active_env = None
+
+
+class EnergyRecorder(RecorderTerm):
+    """Capture clipped actuator torque and left-endpoint velocity at 200 Hz."""
+
+    def __init__(self, cfg, env):
+        super().__init__(cfg, env)
+        self.ids = None
+        self.torque = []
+        self.velocity = []
+
+    def arm(self, env_ids):
+        if self.ids is not None:
+            raise RuntimeError("Energy recorder is already armed")
+        self.ids = env_ids.clone()
+        self.torque = []
+        self.velocity = []
+
+    def record_post_physics_decimation_step(self):
+        if self.ids is not None:
+            robot = self._env.scene["robot"]
+            self.torque.append(robot.data.applied_torque[self.ids].clone())
+            # The scene timestamp advances after this recorder callback, so the
+            # cached actuator-state velocity is the interval's left endpoint.
+            self.velocity.append(robot.data.joint_vel[self.ids].clone())
+        return None, None
+
+    def take(self, expected_samples):
+        if self.ids is None:
+            raise RuntimeError("Energy recorder is not armed")
+        if len(self.torque) != expected_samples or len(self.velocity) != expected_samples:
+            raise RuntimeError(
+                f"Expected {expected_samples} energy samples, got {len(self.torque)}")
+        torque = torch.stack(self.torque, dim=1).cpu().numpy()
+        velocity = torch.stack(self.velocity, dim=1).cpu().numpy()
+        self.ids = None
+        self.torque = []
+        self.velocity = []
+        return torque, velocity
+
+
+@configclass
+class EnergyRecorderCfg(RecorderTermCfg):
+    class_type: type[RecorderTerm] = EnergyRecorder
+
+
+@configclass
+class StabilityRecorderManagerCfg(RecorderManagerBaseCfg):
+    energy = EnergyRecorderCfg()
+    dataset_export_mode = DatasetExportMode.EXPORT_NONE
+    export_in_record_pre_reset = False
+    export_in_close = False
 
 
 def raw_state(env):
@@ -173,14 +231,80 @@ def settle_condition(env, wrapped, policy, speed, gait, period,
     obs = wrapped.get_observations()
 
     phase_states = []
+    energy = {
+        key: [] for key in (
+            "applied_torque", "joint_velocity", "x_boundaries",
+            "initial_contacts", "initial_desired",
+            "phase_ticks", "contacts", "substep_contacts", "desired", "feet_body",
+            "forward_velocity", "lateral_position", "heading",
+            "world_lateral_velocity", "body_yaw_rate", "failure", "done")
+    }
+    energy_recorder = env.recorder_manager._terms["energy"]
     settle_done = torch.zeros(
         args.references, device=env.device, dtype=torch.bool)
     for cycle in range(args.settle_cycles):
+        measuring = cycle >= args.settle_cycles - ENERGY_MEASUREMENT_CYCLES
+        cycle_trace = {key: [] for key in (
+            "phase_ticks", "contacts", "substep_contacts", "desired", "feet_body",
+            "forward_velocity", "lateral_position", "heading",
+            "world_lateral_velocity", "body_yaw_rate", "failure", "done")}
+        if measuring:
+            env.capture_substeps = True
+            energy_recorder.arm(refs)
+            start_x = env.scene["robot"].data.root_pos_w[refs, 0].clone()
+            energy["initial_contacts"].append(
+                c.contact_cache[refs].cpu().numpy())
+            energy["initial_desired"].append(
+                (leg_phase(
+                    (c.phase_ticks[refs] - 1) % c.period_ticks[refs],
+                    c.period_ticks[refs], c.values[refs, 4].long())
+                 < c.values[refs, 1:2]).cpu().numpy())
         for _ in range(period_ticks):
+            if measuring:
+                cycle_trace["phase_ticks"].append(c.phase_ticks[refs].cpu().numpy())
             obs, _, done, _ = wrapped.step(policy(obs))
             settle_done |= done.bool().reshape(
                 args.references, MASTER_STENCIL).any(dim=1)
-        if cycle >= args.settle_cycles - 4:
+            if measuring:
+                transition = env.transition
+                cycle_trace["contacts"].append(
+                    transition["contacts"][refs].cpu().numpy())
+                if len(env.substep_contacts) != env.cfg.decimation:
+                    raise RuntimeError("Missing energy-window 200 Hz contact samples")
+                cycle_trace["substep_contacts"].append(
+                    torch.stack(env.substep_contacts, dim=1)[refs].cpu().numpy())
+                cycle_trace["desired"].append(
+                    transition["desired"][refs].cpu().numpy())
+                cycle_trace["feet_body"].append(
+                    transition["feet_body"][refs].cpu().numpy())
+                cycle_trace["forward_velocity"].append(
+                    transition["forward_velocity"][refs].cpu().numpy())
+                cycle_trace["lateral_position"].append(
+                    transition["body"][refs, 1].cpu().numpy())
+                quat = transition["root_quat"][refs]
+                heading = torch.atan2(
+                    2 * (quat[:, 0] * quat[:, 3] + quat[:, 1] * quat[:, 2]),
+                    1 - 2 * (quat[:, 2].square() + quat[:, 3].square()))
+                cycle_trace["heading"].append(heading.cpu().numpy())
+                cycle_trace["world_lateral_velocity"].append(
+                    transition["world_lateral_velocity"][refs].cpu().numpy())
+                cycle_trace["body_yaw_rate"].append(
+                    transition["body_yaw_rate"][refs].cpu().numpy())
+                cycle_trace["failure"].append(
+                    transition["failure"][refs].cpu().numpy())
+                cycle_trace["done"].append(done.bool()[refs].cpu().numpy())
+        if measuring:
+            expected_samples = period_ticks * env.cfg.decimation
+            torque, velocity = energy_recorder.take(expected_samples)
+            end_x = env.scene["robot"].data.root_pos_w[refs, 0].cpu().numpy()
+            energy["applied_torque"].append(torque)
+            energy["joint_velocity"].append(velocity)
+            energy["x_boundaries"].append(np.stack(
+                [start_x.cpu().numpy(), end_x], axis=-1))
+            for key, values in cycle_trace.items():
+                energy[key].append(np.stack(values, axis=1))
+            env.capture_substeps = False
+        if measuring:
             phase_states.append(
                 raw_state(env).reshape(
                     args.references, MASTER_STENCIL, RAW_STATE_DIM
@@ -201,13 +325,18 @@ def settle_condition(env, wrapped, policy, speed, gait, period,
     settle_group_rms = np.sqrt(np.mean(
         spread[..., ORBITAL_AUGMENTED_INDICES] ** 2, axis=-1
     )).max(axis=1)
-    return settled, cycle_rms, settle_group_rms, settle_done.cpu().numpy()
+    energy = {
+        key: np.stack(values, axis=1)
+        for key, values in energy.items()
+    }
+    return (settled, cycle_rms, settle_group_rms,
+            settle_done.cpu().numpy(), energy)
 
 
 @torch.inference_mode()
 def collect_condition(env, wrapped, policy, period_ticks, settled_result):
     """Roll all h stencils and zero-offset controls concurrently for one period."""
-    settled, cycle_rms, settle_group_rms, settle_done = settled_result
+    settled, cycle_rms, settle_group_rms, settle_done, _ = settled_result
     master, layout = construct_master_stencil(
         settled, args.perturbation_sizes, ZERO_CLONES)
     write_raw_states(env, torch.as_tensor(
@@ -217,11 +346,15 @@ def collect_condition(env, wrapped, policy, period_ticks, settled_result):
     if not bool(torch.all(c.phase_ticks == 0)):
         raise RuntimeError("Stability reference is not phase locked at zero")
     initial_contacts = c.contact_cache.clone()
-    initial_desired = c.desired[reference_ids(env.device)].clone()
+    refs = reference_ids(env.device)
+    initial_desired = (
+        leg_phase(
+            (c.phase_ticks[refs] - 1) % c.period_ticks[refs],
+            c.period_ticks[refs], c.values[refs, 4].long())
+        < c.values[refs, 1:2])
     initial = raw_state(env).reshape(
         args.references, MASTER_STENCIL, RAW_STATE_DIM).cpu().numpy()
     obs = wrapped.get_observations()
-    refs = reference_ids(env.device)
     done_latched = torch.zeros(
         num_envs, device=env.device, dtype=torch.bool)
     contact_trace, desired_trace = [], []
@@ -311,6 +444,7 @@ def main():
     cfg.seed = args.seed
     cfg.sim.device = args.device or "cuda:0"
     cfg.events.motor_gain_randomization = None
+    cfg.recorders = StabilityRecorderManagerCfg()
     env = BeamEnv(cfg)
     active_env = env
     env.capture = True
@@ -369,6 +503,7 @@ def main():
     policy = runner.get_inference_policy(device=env.device)
 
     conditions = []
+    energy_conditions = []
     for period in args.periods:
         for gait in args.gaits:
             for speed in args.speeds:
@@ -387,11 +522,32 @@ def main():
                                 "period": period, "gait": gait,
                                 "perturbation_h": h,
                             })
+                        energy_conditions.append({
+                            "filename": (
+                                f"energy_s{width:.3f}_d{duty:.3f}_"
+                                f"v{speed:.3f}_{gait}_p{period:.2f}.npz"),
+                            "speed": speed, "duty_factor": duty,
+                            "step_width": width, "period": period,
+                            "gait": gait,
+                        })
     if not conditions:
         raise ValueError(
             "No physically valid gait/DF/period conditions were requested")
+    robot = env.scene["robot"]
+    robot_mass = float(robot.data.default_mass[0].sum().cpu())
+    gravity = abs(float(cfg.sim.gravity[2]))
+    effort_limits = torch.empty(
+        robot.num_joints, device=env.device, dtype=torch.float32)
+    for actuator in robot.actuators.values():
+        indices = actuator.joint_indices
+        if indices == slice(None):
+            indices = torch.arange(robot.num_joints, device=env.device)
+        effort_limits[indices] = actuator.effort_limit[0]
+    if not bool(torch.isfinite(effort_limits).all() & (effort_limits > 0).all()):
+        raise RuntimeError("Cannot audit finite positive actuator effort limits")
+    effort_limits_np = effort_limits.cpu().numpy()
     manifest = {
-        "schema": "beam_stability_v2",
+        "schema": "beam_stability_v3",
         "paper_metric_primary":
             "chi_orb=sigma_max(Phi_orbital_augmented_46D)",
         "primary_metric_scope":
@@ -438,6 +594,23 @@ def main():
         "evaluation_reference_seed": args.seed,
         "expected_conditions": conditions,
         "expected_files": [item["filename"] for item in conditions],
+        "energy_schema": ENERGY_SCHEMA,
+        "energy_metric_primary": "positive_mechanical_cot",
+        "energy_metric_diagnostic": "absolute_mechanical_cot",
+        "electrical_loss_included": False,
+        "energy_formula":
+            "sum(max(applied_torque*left_endpoint_joint_velocity,0))*dt/(mass*g*delta_x)",
+        "energy_measurement_cycles": ENERGY_MEASUREMENT_CYCLES,
+        "energy_sample_dt": PHYSICS_DT,
+        "energy_samples_per_control": cfg.decimation,
+        "energy_torque_source": "robot.data.applied_torque_after_clipping",
+        "energy_velocity_timestamp": "left_endpoint",
+        "energy_integration_rule": "left_rectangle",
+        "robot_mass_kg": robot_mass,
+        "gravity_mps2": gravity,
+        "joint_effort_limits_nm": effort_limits_np.tolist(),
+        "expected_energy_conditions": energy_conditions,
+        "expected_energy_files": [item["filename"] for item in energy_conditions],
         "reference_initial_offset_half_width_normalized": .02,
         "reference_initialization":
             "canonical_default_plus_matched_offsets_v1",
@@ -448,7 +621,7 @@ def main():
         "checkpoint_selection_rule": "final_requested_iteration",
         "checkpoint_iteration": runner.current_learning_iteration,
         "gait_regime": {
-            "trot_df": [.50, .75], "walk_df": [.75, .75],
+            "trot_df": [.50, .625, .75], "walk_df": [.75],
             "minimum_swing_s": MIN_SWING_STEPS * CONTROL_DT,
         },
         "task_sha256": task_hash,
@@ -494,6 +667,11 @@ def main():
         ): item["filename"]
         for item in conditions
     }
+    energy_by_key = {
+        (item["period"], item["gait"], item["speed"],
+         item["step_width"], item["duty_factor"]): item["filename"]
+        for item in energy_conditions
+    }
     for period in args.periods:
         ticks = condition_period_ticks[period]
         for gait in args.gaits:
@@ -523,6 +701,33 @@ def main():
                             print(
                                 "STABILITY_EVALUATED", name, "references",
                                 args.references, flush=True)
+                        energy = settled[-1]
+                        values = mechanical_cot(
+                            energy["applied_torque"], energy["joint_velocity"],
+                            energy["x_boundaries"], robot_mass, gravity,
+                            sample_dt=PHYSICS_DT)
+                        energy_name = energy_by_key[
+                            (period, gait, speed, width, duty)]
+                        np.savez_compressed(
+                            args.output / energy_name, **energy, **values,
+                            cycle_rms=settled[1], settle_done=settled[3],
+                            command=np.asarray([
+                                speed, duty, width, period, GAITS.index(gait)]),
+                            schema=ENERGY_SCHEMA,
+                            sample_dt=PHYSICS_DT,
+                            measurement_cycles=ENERGY_MEASUREMENT_CYCLES,
+                            robot_mass_kg=robot_mass,
+                            gravity_mps2=gravity,
+                            joint_effort_limits_nm=effort_limits_np,
+                            joint_order=np.asarray(robot.joint_names),
+                            torque_source="robot.data.applied_torque_after_clipping",
+                            velocity_timestamp="left_endpoint",
+                            integration_rule="left_rectangle",
+                            electrical_loss_included=False,
+                            task_sha256=task_hash,
+                            evaluation_sha256=eval_hash,
+                            checkpoint_sha256=checkpoint_hash)
+                        print("ENERGY_EVALUATED", energy_name, flush=True)
     from beam_walking.experiment.stability import analyze_stability
     analyze_stability(args.output)
     wrapped.close()

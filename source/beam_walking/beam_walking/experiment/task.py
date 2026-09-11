@@ -5,7 +5,7 @@ import torch
 import isaaclab.sim as sim
 from isaaclab.assets import AssetBaseCfg
 from isaaclab.envs import ManagerBasedRLEnv
-from isaaclab.managers import CommandTerm, CommandTermCfg, SceneEntityCfg
+from isaaclab.managers import CommandTerm, CommandTermCfg
 from isaaclab.managers import ObservationTermCfg as ObsTerm, RewardTermCfg as RewTerm
 from isaaclab.managers import EventTermCfg as EventTerm, TerminationTermCfg as DoneTerm
 from isaaclab.sim.utils import clone, create_prim
@@ -15,12 +15,13 @@ from isaaclab_tasks.manager_based.locomotion.velocity.config.go2.flat_env_cfg im
 from isaaclab_tasks.manager_based.locomotion.velocity.config.go2.agents.rsl_rl_ppo_cfg import UnitreeGo2FlatPPORunnerCfg
 from isaaclab_tasks.manager_based.locomotion.velocity import mdp
 from .protocol import (PERIOD, CYCLE_STEPS, PERIOD_TICKS,
-                       STEP_WIDTH_RANGE, MIN_SWING_STEPS, leg_phase, contact_score,
+                       STEP_WIDTH_RANGE, MIN_SWING_STEPS, leg_phase,
+                       robust_contact_score,
                        discrete_stance_fraction, width_score, clearance_score,
                        duty_warped_phase, straight_motion_cost,
                        heading_stabilization_cost, planar_speed_score, world_to_body,
                        normalized_gait_command, sample_training_commands,
-                       fore_aft_target, fore_aft_score)
+                       fore_aft_target, fore_aft_score, advance_phase_ticks)
 
 LEG_NAMES = ["FL_foot", "FR_foot", "RL_foot", "RR_foot"]
 TOP = 0.0
@@ -235,7 +236,15 @@ def task_reward(env):
     v = robot.data.root_lin_vel_w[:, 0]
     speed_reward = planar_speed_score(v - c.values[:, 0], robot.data.root_lin_vel_w[:, 1])
     desired = c.desired
-    timing = contact_score(ct, desired, c.schedule_duty)
+    # Score every 5 ms physics sample.  The former last-sample-only score could
+    # miss within-action contact chatter and lightly loaded stance feet.
+    force_history = env.scene["contact_forces"].data.net_forces_w_history
+    foot_force_norm = force_history[:, :, c.sensor_feet].norm(dim=-1)
+    timing = robust_contact_score(
+        foot_force_norm, desired, c.schedule_duty,
+        contact_threshold=5., stance_floor=15., swing_ceiling=2.)
+    substep_contact = foot_force_norm > 5.
+    desired_substep = desired[:, None, :]
     target_y = c.values[:, 2:3] * c.signs / 2
     body_feet = world_to_body(f - p[:, None, :], robot.data.root_quat_w)
     lateral_error = body_feet[:, :, 1] - target_y
@@ -258,6 +267,21 @@ def task_reward(env):
         "Gait/contact_accuracy": (ct == desired).float().mean(),
         "Gait/stance_recall": (ct & desired).sum().float() / desired.sum().clamp(min=1),
         "Gait/swing_recall": (~ct & ~desired).sum().float() / (~desired).sum().clamp(min=1),
+        "Gait/substep_contact_accuracy":
+            (substep_contact == desired_substep).float().mean(),
+        "Gait/substep_stance_recall":
+            (substep_contact & desired_substep).sum().float()
+            / desired_substep.expand_as(substep_contact).sum().clamp(min=1),
+        "Gait/substep_swing_recall":
+            (~substep_contact & ~desired_substep).sum().float()
+            / (~desired_substep).expand_as(substep_contact).sum().clamp(min=1),
+        "Gait/stance_force_15_fraction":
+            ((foot_force_norm >= 15.) & desired_substep).sum().float()
+            / desired_substep.expand_as(foot_force_norm).sum().clamp(min=1),
+        "Gait/swing_force_2_fraction":
+            ((foot_force_norm <= 2.) & ~desired_substep).sum().float()
+            / (~desired_substep).expand_as(foot_force_norm).sum().clamp(min=1),
+        "Gait/substep_contact_margin_score": timing.mean(),
         "Gait/foot_lateral_rmse": world_lateral_error.square().mean().sqrt(),
         "Gait/body_foot_lateral_rmse": lateral_error.square().mean().sqrt(),
         "Gait/body_foot_fore_aft_rmse": (body_feet[:, :, 0] - target_x).square().mean().sqrt(),
@@ -343,7 +367,6 @@ class BeamEnv(ManagerBasedRLEnv):
         Actions, physics, PPO interface, and reset ordering are unchanged.
         """
         c = command(self)
-        c.phase_ticks[:] = (c.phase_ticks + 1) % c.period_ticks
         self.substep_failure = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
         # process actions
         self.action_manager.process_action(action.to(self.device))
@@ -390,6 +413,7 @@ class BeamEnv(ManagerBasedRLEnv):
         self.reset_buf = self.termination_manager.compute()
         self.reset_terminated = self.termination_manager.terminated
         self.reset_time_outs = self.termination_manager.time_outs
+        reset_mask = self.reset_buf.clone()
         # -- reward computation
         self.reward_buf = self.reward_manager.compute(dt=self.step_dt)
 
@@ -415,6 +439,11 @@ class BeamEnv(ManagerBasedRLEnv):
             # trigger recorder terms for post-reset calls
             self.recorder_manager.record_post_reset(reset_env_ids)
 
+        # The action, physics, reward, and captured transition above all use the
+        # phase returned in the preceding observation. Advance only afterward so
+        # the next observation exposes the next target. Fresh resets stay at
+        # phase zero and continuing environments wrap before command resampling.
+        c.phase_ticks[:] = advance_phase_ticks(c.phase_ticks, c.period_ticks, reset_mask)
         # -- update command
         self.command_manager.compute(dt=self.step_dt)
         # -- step interval events
@@ -460,14 +489,9 @@ class BeamEnvCfg(UnitreeGo2FlatEnvCfg):
         self.events.add_base_mass = None
         self.events.base_external_force_torque = None
         self.events.push_robot = None
-        # Conservative training-only actuator-domain randomization. Evaluation
-        # launchers disable this term to measure the nominal Go2 plant.
-        self.events.motor_gain_randomization = EventTerm(
-            func=mdp.randomize_actuator_gains, mode="startup",
-            params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*"]),
-                    "stiffness_distribution_params": (.90, 1.10),
-                    "damping_distribution_params": (.90, 1.10),
-                    "operation": "scale", "distribution": "uniform"})
+        # Keep the paper-correlation experiment on the nominal Go2 plant.
+        # Motor-gain domain randomization is postponed to a separate study.
+        self.events.motor_gain_randomization = None
         self.rewards.track_lin_vel_xy_exp = None
         self.rewards.track_ang_vel_z_exp = None
         self.rewards.feet_air_time = None
