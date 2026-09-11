@@ -1,4 +1,5 @@
 """Offline analysis of measured flat-ground gait-command trials."""
+import hashlib
 import json
 from pathlib import Path
 import numpy as np
@@ -8,6 +9,51 @@ LEGS = ("FL", "FR", "RL", "RR")
 OFFSETS = (0., .5, .5, 0.)
 PERIOD = .48
 DT = .02
+NOMINAL_SCHEMA = "nominal_flat_gait_eval_v2"
+NOMINAL_EVALUATOR_PATHS = (
+    "scripts/evaluate_policy.py",
+    "scripts/evaluation_capacity.py",
+    "scripts/analyze_beam.py",
+    "source/beam_walking/beam_walking/experiment/analysis.py",
+    "scripts/gpu_capacity.py",
+)
+
+
+def nominal_evaluation_source_hash(root):
+    root = Path(root)
+    return hashlib.sha256(b"".join(
+        (root / relative).read_bytes()
+        for relative in NOMINAL_EVALUATOR_PATHS)).hexdigest()
+
+
+def include_post_step_video_frame(step, was_active, done, stride=2):
+    """Exclude terminal steps because Isaac has already reset them on return."""
+    if stride < 1:
+        raise ValueError("Video stride must be positive")
+    return step % stride == 0 and bool(was_active) and not bool(done)
+
+
+def nominal_archive_payload(traces, metadata):
+    """Build an unambiguous nominal-rollout archive.
+
+    The environment's legacy ``speed`` transition is body-frame forward
+    velocity. Store it under an explicit trace name so ``command_speed`` can
+    remain a scalar run-identity field.
+    """
+    payload = {}
+    for key, values in traces.items():
+        archive_key = "body_forward_velocity" if key == "speed" else key
+        if archive_key in payload:
+            raise ValueError(f"Duplicate nominal archive field: {archive_key}")
+        payload[archive_key] = np.stack(values)
+    overlap = set(payload) & set(metadata)
+    if overlap:
+        raise ValueError(f"Trace/metadata field collision: {sorted(overlap)}")
+    payload.update(metadata)
+    if "body_forward_velocity" not in payload or "command_speed" not in payload:
+        raise ValueError(
+            "Nominal archive requires body-forward trace and scalar command speed")
+    return payload
 
 
 def wilson(successes, n, z=1.959963984540054):
@@ -55,24 +101,72 @@ def validate_manifest(directory):
     """Reject missing cells, mixed checkpoints, and unmatched trial plans."""
     directory = Path(directory)
     manifest = json.loads((directory / "evaluation_manifest.json").read_text())
+    schema = manifest.get("schema")
+    if schema not in (None, NOMINAL_SCHEMA):
+        raise ValueError(f"Unsupported evaluation manifest schema: {schema}")
+    v2 = schema == NOMINAL_SCHEMA
     frame = manifest.get("step_width_frame", "world")
     if frame not in ("world", "body"):
         raise ValueError("Invalid manifest step_width_frame")
-    required = ["expected_conditions", "seeds", "period", "gait", "source_sha256", "checkpoint_sha256"]
+    required = [
+        "expected_conditions", "seeds", "period", "gait",
+        "source_sha256", "checkpoint_sha256",
+    ]
     if any(key not in manifest for key in required):
         raise ValueError("Evaluation manifest is missing required run identity")
+    if v2:
+        v2_required = [
+            "evaluator_sha256", "training_provenance_sha256",
+            "split", "condition_reset_seed",
+        ]
+        if any(key not in manifest for key in v2_required):
+            raise ValueError("V2 manifest is missing required provenance")
+        if manifest.get("terrain") != "flat_ground":
+            raise ValueError("V2 evaluation must use flat ground")
+        if manifest.get("external_pushes") is not False:
+            raise ValueError("V2 evaluation must disable external pushes")
+        if manifest["split"] not in ("validation", "test"):
+            raise ValueError("Invalid held-out split")
     cells = manifest["expected_conditions"]
     conditions = [(cell["step_width"], cell["df"], cell["disturbed"]) for cell in cells]
     if len(conditions) != len(set(conditions)):
         raise ValueError("Duplicate evaluation condition in manifest")
+    if v2 and any(bool(cell["disturbed"]) for cell in cells):
+        raise ValueError("V2 evaluation conditions must all be nominal")
     names = [cell["filename"] for cell in cells]
     if not names or len(names) != len(set(names)):
         raise ValueError("Expected filenames must be nonempty and unique")
-    if set(names) != {p.name for p in directory.glob("trial_*.npz")}:
+    if set(names) != {path.name for path in directory.glob("trial_*.npz")}:
         raise ValueError("Measured files do not exactly match the evaluation manifest")
     seeds = np.asarray(manifest["seeds"])
     if not len(seeds) or len(seeds) != len(set(seeds.tolist())):
         raise ValueError("Trial seeds must be nonempty and unique")
+    if v2:
+        low, high = ((10000, 1000000) if manifest["split"] == "validation"
+                     else (1000000, 2000000))
+        if seeds[0] < low or seeds[-1] >= high or not np.array_equal(
+                seeds, np.arange(seeds[0], seeds[0] + len(seeds))):
+            raise ValueError("V2 seeds must be contiguous and inside the held-out split")
+        provenance_path = directory / "training_provenance.json"
+        if (not provenance_path.is_file() or hashlib.sha256(
+                provenance_path.read_bytes()).hexdigest()
+                != manifest["training_provenance_sha256"]):
+            raise ValueError("Archived training provenance hash mismatch")
+        complete_path = directory / "evaluation_complete.json"
+        if not complete_path.is_file():
+            raise ValueError("V2 evaluation is missing its completion marker")
+        complete = json.loads(complete_path.read_text())
+        expected_complete = {
+            "complete": True, "schema": NOMINAL_SCHEMA,
+            "conditions": len(names), "trials_per_condition": len(seeds),
+            "source_sha256": manifest["source_sha256"],
+            "checkpoint_sha256": manifest["checkpoint_sha256"],
+            "evaluator_sha256": manifest["evaluator_sha256"],
+            "training_provenance_sha256":
+                manifest["training_provenance_sha256"],
+        }
+        if complete != expected_complete:
+            raise ValueError("V2 evaluation completion marker mismatch")
     reference, push_reference = None, None
     for cell in cells:
         path = directory / cell["filename"]
@@ -85,8 +179,31 @@ def validate_manifest(directory):
             for key in ["period", "gait", "source_sha256", "checkpoint_sha256"]:
                 if key not in data or data[key].item() != manifest[key]:
                     raise ValueError(f"Run identity mismatch: {path.name}, {key}")
-            if "speed" in manifest and ("speed" not in data or not np.isclose(data["speed"].item(), manifest["speed"])):
-                raise ValueError(f"Run identity mismatch: {path.name}, speed")
+            if v2:
+                identity = (
+                    "schema", "terrain", "external_pushes", "split",
+                    "evaluator_sha256", "training_provenance_sha256",
+                    "condition_reset_seed",
+                )
+                for key in identity:
+                    if key not in data or data[key].item() != manifest[key]:
+                        raise ValueError(f"V2 identity mismatch: {path.name}, {key}")
+                forbidden = {"force", "planned_force", "push_plan"} & set(data.files)
+                if forbidden:
+                    raise ValueError(
+                        f"V2 nominal archive contains push fields: {sorted(forbidden)}")
+            if "speed" in manifest:
+                if "command_speed" in data:
+                    saved_speed = data["command_speed"].item()
+                elif "speed" in data and data["speed"].ndim == 0:
+                    saved_speed = data["speed"].item()
+                elif "commands" in data and data["commands"].ndim == 3:
+                    saved_speed = data["commands"][0, 0, 0].item()
+                else:
+                    raise ValueError(
+                        f"Run identity mismatch: {path.name}, command speed")
+                if not np.isclose(saved_speed, manifest["speed"]):
+                    raise ValueError(f"Run identity mismatch: {path.name}, speed")
             for key in ["step_width", "df", "disturbed"]:
                 if key not in data or data[key].item() != cell[key]:
                     raise ValueError(f"Condition mismatch: {path.name}, {key}")
@@ -95,11 +212,16 @@ def validate_manifest(directory):
             if not np.isclose(float(data["control_dt"]), DT):
                 raise ValueError("Unsupported contact sampling interval")
             plan_key = "reset_plan" if "reset_plan" in data else "push_plan"
-            paired = {key: data[key].copy() for key in ["initial_root", "initial_joints", plan_key]}
+            paired = {
+                key: data[key].copy()
+                for key in ["initial_root", "initial_joints", plan_key]
+            }
             if reference is None:
                 reference = paired
-            elif any(not np.allclose(paired[key], reference[key], atol=1e-6) for key in paired):
-                raise ValueError(f"Matched reset state or push plan mismatch: {path.name}")
+            elif any(not np.allclose(
+                    paired[key], reference[key], atol=1e-6) for key in paired):
+                raise ValueError(
+                    f"Matched reset state or push plan mismatch: {path.name}")
             if not cell["disturbed"] and "planned_force" in data and np.any(data["planned_force"]):
                 raise ValueError("Nominal condition contains a planned push")
             if cell["disturbed"]:
@@ -160,6 +282,11 @@ def trial_rows(path):
     offsets_by_gait = {"trot": GAIT_OFFSETS[0], "walk": GAIT_OFFSETS[1]}
     if gait not in offsets_by_gait or not np.allclose(d["phase_offsets"], offsets_by_gait[gait]):
         raise ValueError(f"Invalid gait or phase offsets: {path}")
+    body_speed_key = (
+        "body_forward_velocity" if "body_forward_velocity" in d else "speed")
+    body_speed = np.asarray(d[body_speed_key])
+    if body_speed.shape != d["valid"].shape:
+        raise ValueError(f"Malformed body-forward velocity trace: {path}")
     rows = []
     for trial in range(d["valid"].shape[1]):
         mask = d["valid"][:, trial].astype(bool)
@@ -222,9 +349,9 @@ def trial_rows(path):
             "duration": float(t[-1]), "traversal_time": float(t[-1]) if success else np.nan,
             "course_distance": float(np.clip(body[:, 0].max(), 0, 3.35)),
             "forward_distance": float(max(0., body[:, 0].max() + .65)),
-            "mean_speed": float(d["speed"][mask, trial].mean()),
+            "mean_speed": float(body_speed[mask, trial].mean()),
             "forward_speed": float(d["forward_velocity"][mask, trial][settled].mean()) if settled.any() else np.nan,
-            "settled_body_forward_speed": float(d["speed"][mask, trial][settled].mean()) if settled.any() else np.nan,
+            "settled_body_forward_speed": float(body_speed[mask, trial][settled].mean()) if settled.any() else np.nan,
             "command_speed": float(cmds[0, 0]), "command_width": float(cmds[0, 2]),
             "step_width_frame": frame,
             "achieved_width": width_metrics[f"{frame}_achieved_width"],

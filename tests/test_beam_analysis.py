@@ -1,5 +1,6 @@
 """Synthetic offline tests only; fixtures never enter measured results."""
 import contextlib
+import hashlib
 import io
 import json
 import sys
@@ -11,7 +12,11 @@ import numpy as np
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "source/beam_walking"))
-from beam_walking.experiment.analysis import complete_cycle_df, wilson, trial_rows, validate_manifest, analyze
+from beam_walking.experiment.analysis import (
+    NOMINAL_SCHEMA, analyze, complete_cycle_df,
+    include_post_step_video_frame, nominal_archive_payload, trial_rows,
+    validate_manifest, wilson,
+)
 from beam_walking.experiment.protocol import leg_phase, contact_score, discrete_stance_fraction, GAIT_OFFSETS
 
 
@@ -89,6 +94,95 @@ def declare_body_run(directory, manifest, yaw=.0, roll=.0):
 
 
 class MetricsTest(unittest.TestCase):
+    def test_nominal_archive_separates_command_and_measured_speed(self):
+        trace = np.asarray([.27, .31], dtype=np.float32)
+        payload = nominal_archive_payload(
+            {"speed": [trace], "valid": [np.ones(2, dtype=bool)]},
+            {"command_speed": .30, "period": .48})
+        self.assertNotIn("speed", payload)
+        np.testing.assert_array_equal(
+            payload["body_forward_velocity"], trace[None])
+        self.assertEqual(payload["command_speed"], .30)
+        with self.assertRaisesRegex(ValueError, "collision"):
+            nominal_archive_payload(
+                {"speed": [trace]}, {"body_forward_velocity": trace})
+
+    def test_v2_manifest_provenance_and_speed_schema(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            manifest = synthetic_run(directory, widths=(.3,), dfs=(.625,))
+            training_bytes = b'{"synthetic": true}'
+            (directory / "training_provenance.json").write_bytes(training_bytes)
+            training_hash = hashlib.sha256(training_bytes).hexdigest()
+            manifest.update({
+                "schema": NOMINAL_SCHEMA, "speed": .30,
+                "terrain": "flat_ground", "external_pushes": False,
+                "split": "validation", "condition_reset_seed": 3010000,
+                "evaluator_sha256": "synthetic-evaluator",
+                "training_provenance_sha256": training_hash,
+            })
+            path = directory / manifest["expected_conditions"][0]["filename"]
+            with np.load(path) as data:
+                payload = {key: data[key] for key in data.files}
+            payload["body_forward_velocity"] = payload.pop("speed")
+            payload["reset_plan"] = payload.pop("push_plan")
+            for key in ("force", "planned_force"):
+                payload.pop(key)
+            payload.update({
+                "schema": NOMINAL_SCHEMA, "command_speed": .30,
+                "terrain": "flat_ground", "external_pushes": False,
+                "split": "validation", "condition_reset_seed": 3010000,
+                "evaluator_sha256": "synthetic-evaluator",
+                "training_provenance_sha256": training_hash,
+            })
+            np.savez_compressed(path, **payload)
+            complete = {
+                "complete": True, "schema": NOMINAL_SCHEMA,
+                "conditions": 1, "trials_per_condition": 3,
+                "source_sha256": manifest["source_sha256"],
+                "checkpoint_sha256": manifest["checkpoint_sha256"],
+                "evaluator_sha256": manifest["evaluator_sha256"],
+                "training_provenance_sha256": training_hash,
+            }
+            (directory / "evaluation_manifest.json").write_text(json.dumps(manifest))
+            (directory / "evaluation_complete.json").write_text(json.dumps(complete))
+            self.assertEqual(validate_manifest(directory), [path])
+            rows = trial_rows(path)
+            self.assertTrue(all(np.isclose(row["mean_speed"], .30) for row in rows))
+
+            payload["command_speed"] = .31
+            np.savez_compressed(path, **payload)
+            with self.assertRaisesRegex(ValueError, "speed"):
+                validate_manifest(directory)
+            payload["command_speed"] = .30
+
+            payload["force"] = np.zeros((150, 3, 3))
+            np.savez_compressed(path, **payload)
+            with self.assertRaisesRegex(ValueError, "push fields"):
+                validate_manifest(directory)
+            payload.pop("force")
+            np.savez_compressed(path, **payload)
+
+            manifest["evaluator_sha256"] = "tampered"
+            (directory / "evaluation_manifest.json").write_text(json.dumps(manifest))
+            with self.assertRaisesRegex(ValueError, "completion marker"):
+                validate_manifest(directory)
+            manifest["evaluator_sha256"] = "synthetic-evaluator"
+            (directory / "evaluation_manifest.json").write_text(json.dumps(manifest))
+
+            complete["conditions"] = 2
+            (directory / "evaluation_complete.json").write_text(json.dumps(complete))
+            with self.assertRaisesRegex(ValueError, "completion marker"):
+                validate_manifest(directory)
+
+    def test_video_frame_gate_excludes_terminal_reset_frame(self):
+        self.assertTrue(include_post_step_video_frame(0, True, False))
+        self.assertFalse(include_post_step_video_frame(1, True, False))
+        self.assertFalse(include_post_step_video_frame(2, True, True))
+        self.assertFalse(include_post_step_video_frame(2, False, False))
+        with self.assertRaisesRegex(ValueError, "stride"):
+            include_post_step_video_frame(0, True, False, stride=0)
+
     def test_complete_cycles_both_gaits_and_short_periods(self):
         for period in [.36, .48, .54]:
             count = round(period / .02)

@@ -1,0 +1,329 @@
+"""Run held-out nominal flat-ground evaluation for a frozen gait-command PPO."""
+import argparse
+import faulthandler
+import hashlib
+import importlib.metadata
+import json
+from pathlib import Path
+import shutil
+import sys
+
+import numpy as np
+
+faulthandler.enable()
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "source/beam_walking"))
+from beam_walking.experiment.protocol import (
+    CONTROL_DT, GAITS, GAIT_OFFSETS, MIN_SWING_STEPS, PERIOD_TICKS,
+    STEP_WIDTH_FRAME, validate_scientific_gait_duties,
+)
+from isaaclab.app import AppLauncher
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--checkpoint", type=Path, required=True)
+parser.add_argument("--output", type=Path, required=True)
+parser.add_argument("--num_envs", type=int, default=64)
+parser.add_argument("--seed", type=int, default=10000)
+parser.add_argument("--split", choices=("validation", "test"), default="validation")
+parser.add_argument("--stance_start_probability", type=float, default=.10)
+parser.add_argument("--video", action="store_true")
+parser.add_argument("--camera_env", type=int, default=0)
+parser.add_argument("--dfs", type=float, nargs="+")
+parser.add_argument("--gait", choices=GAITS, default="trot")
+parser.add_argument("--period", type=float, default=.48)
+parser.add_argument("--speed", type=float, default=.30)
+parser.add_argument("--step_widths", type=float, nargs="+", default=[.10, .20, .30, .40, .50])
+AppLauncher.add_app_launcher_args(parser)
+args = parser.parse_args()
+if args.dfs is None:
+    args.dfs = [.75] if args.gait == "walk" else [.50, .625, .75]
+if args.num_envs < 1:
+    parser.error("--num_envs must be positive")
+if not 0 <= args.stance_start_probability <= 1:
+    parser.error("Stance-start probability must be in [0,1]")
+ticks = round(args.period / CONTROL_DT)
+if ticks not in PERIOD_TICKS or not np.isclose(ticks * CONTROL_DT, args.period):
+    parser.error("Period must be 0.36-0.54 s in 0.02 s increments")
+if any(not .10 <= width <= .50 for width in args.step_widths):
+    parser.error("Step width must be in [0.10,0.50] m")
+if not .25 <= args.speed <= .40:
+    parser.error("Speed must be in [0.25,0.40] m/s")
+if any(df < .50 or df > min(.75, 1 - MIN_SWING_STEPS / ticks) + 1e-7 for df in args.dfs):
+    parser.error("DF/period must leave at least 0.10 s of requested swing")
+if len(set(args.step_widths)) != len(args.step_widths) or len(set(args.dfs)) != len(args.dfs):
+    parser.error("Widths and duty factors must be unique")
+try:
+    validate_scientific_gait_duties(args.gait, args.dfs)
+except ValueError as error:
+    parser.error(str(error))
+low, high = (10000, 1000000) if args.split == "validation" else (1000000, 2000000)
+if not low <= args.seed or args.seed + args.num_envs > high:
+    parser.error("Evaluation seeds must stay in the selected held-out split")
+if not args.checkpoint.is_file():
+    parser.error("Checkpoint does not exist")
+if args.output.exists() and any(args.output.iterdir()):
+    parser.error("Output directory must be new or empty")
+
+from evaluation_capacity import check_evaluation_capacity
+capacity = check_evaluation_capacity(args.num_envs, args.device or "cuda:0", args.video)
+if args.video:
+    args.enable_cameras = True
+app = AppLauncher(args).app
+
+import torch
+from isaaclab_rl.rsl_rl import RslRlVecEnvWrapper
+from rsl_rl.runners import OnPolicyRunner
+from beam_walking.experiment.analysis import (
+    NOMINAL_SCHEMA, include_post_step_video_frame, nominal_archive_payload,
+    nominal_evaluation_source_hash,
+)
+from beam_walking.experiment.task import BeamEnv, BeamEnvCfg, BeamPPORunnerCfg, command
+
+
+def source_hash(paths):
+    return hashlib.sha256(b"".join(path.read_bytes() for path in paths)).hexdigest()
+
+
+@torch.inference_mode()
+def evaluate(env, wrapped, policy, provenance):
+    env.capture = True
+    gait_command = command(env)
+    n = env.num_envs
+    reset_plan, stance_starts = [], []
+    for index in range(n):
+        rng = np.random.default_rng(args.seed + index)
+        reset_plan.append([rng.uniform(-.04, .04), rng.uniform(-.01, .01)])
+        stance_starts.append(rng.random() < args.stance_start_probability)
+    reset_plan = np.asarray(reset_plan)
+    expected = []
+    for width in args.step_widths:
+        for duty in args.dfs:
+            stem = (
+                f"trial_s{width:.3f}_d{duty:.3f}_v{args.speed:.3f}_"
+                f"{args.gait}_p{args.period:.2f}_nominal")
+            expected.append({
+                "filename": f"{stem}.npz", "step_width": width,
+                "df": duty, "disturbed": False,
+            })
+    manifest = {
+        "schema": NOMINAL_SCHEMA,
+        "terrain": "flat_ground", "external_pushes": False,
+        "split": args.split,
+        "condition_reset_seed": provenance["condition_reset_seed"],
+        "training_provenance_sha256":
+            provenance["training_provenance_sha256"],
+        "step_width_frame": STEP_WIDTH_FRAME,
+        "expected_conditions": expected,
+        "seeds": list(range(args.seed, args.seed + n)),
+        "period": args.period, "speed": args.speed, "gait": args.gait,
+        "source_sha256": provenance["task_sha256"],
+        "evaluator_sha256": provenance["evaluator_sha256"],
+        "checkpoint_sha256": provenance["checkpoint_sha256"],
+    }
+    (args.output / "evaluation_manifest.json").write_text(json.dumps(manifest, indent=2))
+
+    matched_initial = None
+    for width in args.step_widths:
+        for duty in args.dfs:
+            gait_command.evaluation = {
+                "df": duty, "speed": args.speed,
+                "gait": GAITS.index(args.gait), "period": args.period,
+                "step_width": width,
+                "stance_start": torch.tensor(
+                    stance_starts, device=env.device, dtype=torch.bool),
+                "yaw": torch.tensor(
+                    reset_plan[:, 0], device=env.device, dtype=torch.float32),
+                "lateral": torch.tensor(
+                    reset_plan[:, 1], device=env.device, dtype=torch.float32),
+            }
+            wrapped.seed(provenance["condition_reset_seed"])
+            obs, _ = wrapped.reset()
+            initial_root = env.scene["robot"].data.root_state_w.cpu().numpy().copy()
+            initial_joints = env.scene["robot"].data.joint_pos.cpu().numpy().copy()
+            initial_pair = (initial_root, initial_joints)
+            if matched_initial is None:
+                matched_initial = tuple(value.copy() for value in initial_pair)
+            elif any(not np.allclose(current, reference, atol=1e-6)
+                     for current, reference in zip(initial_pair, matched_initial)):
+                raise RuntimeError(
+                    "Condition reset did not reproduce matched root/joint states")
+            stem = (
+                f"trial_s{width:.3f}_d{duty:.3f}_v{args.speed:.3f}_"
+                f"{args.gait}_p{args.period:.2f}_nominal")
+            video_writer = None
+            temporary_video = None
+            if args.video:
+                if not 0 <= args.camera_env < n:
+                    raise ValueError("camera_env must index an evaluated environment")
+                origin = env.scene.env_origins[args.camera_env].cpu().numpy()
+                center = origin + np.array([1.5, 0., .2])
+                env.sim.set_camera_view(
+                    eye=center + np.array([2.5, -4., 2.4]), target=center)
+                import imageio.v2 as imageio
+                temporary_video = args.output / (
+                    f"{stem}_seed{args.seed + args.camera_env}_recording.mp4")
+                video_writer = imageio.get_writer(temporary_video, fps=25)
+                video_writer.append_data(env.render())
+            active = torch.ones(n, device=env.device, dtype=torch.bool)
+            traces = {}
+            try:
+                for step in range(env.max_episode_length):
+                    obs, _, done, _ = wrapped.step(policy(obs))
+                    record = {
+                        **env.transition, "valid": active.clone(),
+                        "done": done.bool().clone(),
+                    }
+                    for key, value in record.items():
+                        traces.setdefault(key, []).append(value.cpu().numpy())
+                    if args.video and include_post_step_video_frame(
+                            step, active[args.camera_env], done[args.camera_env]):
+                        video_writer.append_data(env.render())
+                    active &= ~done.bool()
+                    if not bool(active.any()):
+                        break
+            finally:
+                if video_writer is not None:
+                    video_writer.close()
+            archive = nominal_archive_payload(traces, {
+                "schema": NOMINAL_SCHEMA,
+                "df": duty, "command_speed": args.speed,
+                "disturbed": False, "terrain": "flat_ground",
+                "external_pushes": False, "split": args.split,
+                "condition_reset_seed": provenance["condition_reset_seed"],
+                "training_provenance_sha256":
+                    provenance["training_provenance_sha256"],
+                "control_dt": CONTROL_DT,
+                "step_width_frame": STEP_WIDTH_FRAME,
+                "source_sha256": provenance["task_sha256"],
+                "evaluator_sha256": provenance["evaluator_sha256"],
+                "checkpoint_sha256": provenance["checkpoint_sha256"],
+                "period": args.period, "gait": args.gait,
+                "step_width": width,
+                "phase_offsets": np.asarray(GAIT_OFFSETS[GAITS.index(args.gait)]),
+                "seeds": np.arange(args.seed, args.seed + n),
+                "reset_plan": reset_plan,
+                "initial_root": initial_root,
+                "initial_joints": initial_joints,
+            })
+            np.savez_compressed(args.output / f"{stem}.npz", **archive)
+            if temporary_video is not None:
+                success_trace = archive["success"][:, args.camera_env]
+                valid_trace = archive["valid"][:, args.camera_env].astype(bool)
+                failed = bool(archive["failure"][:, args.camera_env][valid_trace][-1])
+                outcome = (
+                    "failure" if failed else
+                    ("success" if bool(success_trace[valid_trace][-1]) else "timeout"))
+                temporary_video.replace(
+                    args.output / f"{stem}_seed{args.seed + args.camera_env}_{outcome}.mp4")
+            print("EVALUATED", stem, "trials", n, flush=True)
+
+    expected_names = {item["filename"] for item in expected}
+    actual_names = {path.name for path in args.output.glob("trial_*.npz")}
+    if actual_names != expected_names:
+        raise RuntimeError(
+            f"Evaluation archive mismatch: missing={sorted(expected_names-actual_names)}, "
+            f"extra={sorted(actual_names-expected_names)}")
+    (args.output / "evaluation_complete.json").write_text(json.dumps({
+        "complete": True, "schema": NOMINAL_SCHEMA,
+        "conditions": len(expected_names), "trials_per_condition": n,
+        "source_sha256": provenance["task_sha256"],
+        "checkpoint_sha256": provenance["checkpoint_sha256"],
+        "evaluator_sha256": provenance["evaluator_sha256"],
+        "training_provenance_sha256":
+            provenance["training_provenance_sha256"],
+    }, indent=2))
+
+
+def main():
+    torch.set_num_threads(4)
+    args.output.mkdir(parents=True, exist_ok=True)
+    snapshot = args.output / "source_snapshot"
+    snapshot.mkdir(parents=True)
+    for source in (
+        ROOT / "scripts/evaluate_policy.py",
+        ROOT / "scripts/gpu_capacity.py",
+        ROOT / "scripts/evaluation_capacity.py",
+        ROOT / "scripts/analyze_beam.py",
+        ROOT / "source/beam_walking/beam_walking/experiment/analysis.py",
+        ROOT / "source/beam_walking/beam_walking/experiment/task.py",
+        ROOT / "source/beam_walking/beam_walking/experiment/protocol.py",
+    ):
+        shutil.copy2(source, snapshot / source.name)
+    (args.output / "capacity.json").write_text(json.dumps(capacity, indent=2))
+
+    cfg = BeamEnvCfg()
+    cfg.scene.num_envs = args.num_envs
+    cfg.seed = args.seed
+    cfg.stance_start_probability = args.stance_start_probability
+    cfg.sim.device = args.device or "cuda:0"
+    cfg.events.motor_gain_randomization = None
+    env = BeamEnv(cfg, render_mode="rgb_array" if args.video else None)
+    wrapped = None
+    try:
+        if args.stance_start_probability > 0:
+            env.calibrate_stance()
+            (args.output / "settled_stance.json").write_text(json.dumps({
+                key: value.detach().cpu().tolist()
+                for key, value in env.settled_stance.items()
+            }, indent=2))
+        wrapped = RslRlVecEnvWrapper(env, clip_actions=5.)
+        agent = BeamPPORunnerCfg()
+        agent.seed = args.seed
+        agent.device = cfg.sim.device
+        runner = OnPolicyRunner(wrapped, agent.to_dict(), log_dir=None, device=env.device)
+        saved = runner.load(str(args.checkpoint), load_optimizer=False)
+        task_hash = source_hash([
+            ROOT / "source/beam_walking/beam_walking/experiment/task.py",
+            ROOT / "source/beam_walking/beam_walking/experiment/protocol.py",
+        ])
+        if not saved or saved.get("task_sha256") != task_hash:
+            raise ValueError("Checkpoint task source does not match this evaluator")
+        training_path = args.checkpoint.parent / "provenance.json"
+        if not training_path.is_file():
+            raise ValueError("Checkpoint training provenance.json is required")
+        training_bytes = training_path.read_bytes()
+        training = json.loads(training_bytes)
+        training_provenance_hash = hashlib.sha256(training_bytes).hexdigest()
+        (args.output / "training_provenance.json").write_bytes(training_bytes)
+        if (
+            training.get("task_sha256") != task_hash
+            or training.get("fresh_training") is not True
+            or training.get("checkpoint_selection_rule") != "final_requested_iteration"
+            or runner.current_learning_iteration
+                != training.get("training_iterations_requested", 0) - 1
+        ):
+            raise ValueError("Evaluation requires the final checkpoint from a fresh run")
+        checkpoint_hash = hashlib.sha256(args.checkpoint.read_bytes()).hexdigest()
+        evaluator_hash = nominal_evaluation_source_hash(ROOT)
+        provenance = {
+            "mode": "evaluate", "split": args.split, "seed": args.seed,
+            "argv": sys.argv, "terrain": "flat_ground",
+            "external_pushes": False,
+            "condition_reset_seed": args.seed + 3000000,
+            "training_provenance": str(training_path.resolve()),
+            "training_provenance_file": "training_provenance.json",
+            "training_provenance_sha256": training_provenance_hash,
+            "training_source_sha256": training["training_source_sha256"],
+            "task_sha256": task_hash, "evaluator_sha256": evaluator_hash,
+            "checkpoint": str(args.checkpoint.resolve()),
+            "checkpoint_sha256": checkpoint_hash,
+            "checkpoint_iteration": runner.current_learning_iteration,
+            "versions": {
+                name: importlib.metadata.version(name)
+                for name in ("torch", "isaaclab", "isaacsim", "rsl-rl-lib")
+            },
+        }
+        (args.output / "provenance.json").write_text(json.dumps(provenance, indent=2))
+        evaluate(env, wrapped, runner.get_inference_policy(device=env.device), provenance)
+    finally:
+        if wrapped is not None:
+            wrapped.close()
+        else:
+            env.close()
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    finally:
+        app.close()
