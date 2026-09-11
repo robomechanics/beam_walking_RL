@@ -17,8 +17,11 @@ from beam_walking.experiment.protocol import (
     CONTROL_DT, GAITS, MIN_SWING_STEPS, PERIOD_TICKS,
 )
 from beam_walking.experiment.stability import (
-    AUGMENTED_DIM, ORBITAL_AUGMENTED_INDICES, RAW_STATE_DIM, STATE_SCALES,
-    construct_master_stencil, master_stencil_layout, state_delta,
+    AUGMENTED_DIM, CONFIRMATORY_TRAINING_ITERATIONS, FROZEN_GATE_LIMITS,
+    ORBITAL_AUGMENTED_INDICES, RAW_STATE_DIM, STATE_SCALES,
+    canonical_reference_states, confirmatory_protocol,
+    construct_master_stencil, evaluation_source_hash, master_stencil_layout,
+    state_delta, training_source_hash,
 )
 from isaaclab.app import AppLauncher
 
@@ -154,15 +157,9 @@ def settle_condition(env, wrapped, policy, speed, gait, period,
     # Apply matched small initial-state offsets to each reference, then broadcast
     # each state to every member of that reference's master stencil. All members
     # subsequently accumulate the same contact-solver history for 12 periods.
-    rng = np.random.default_rng(args.seed)
-    reference_raw = raw_state(env)[refs].cpu().numpy()
-    from beam_walking.experiment.stability import apply_scaled_perturbation
-    for ref in range(args.references):
-        for coordinate, amount in zip(
-            range(2, 36), rng.uniform(-.02, .02, size=34)
-        ):
-            reference_raw[ref] = apply_scaled_perturbation(
-                reference_raw[ref], coordinate, float(amount))
+    reference_raw = canonical_reference_states(
+        env.scene["robot"].data.default_joint_pos[0].cpu().numpy(),
+        args.references, seed=args.seed, offset_half_width=.02)
     broadcast = np.repeat(
         reference_raw[:, None, :], MASTER_STENCIL, axis=1
     ).reshape(num_envs, RAW_STATE_DIM)
@@ -220,6 +217,7 @@ def collect_condition(env, wrapped, policy, period_ticks, settled_result):
     if not bool(torch.all(c.phase_ticks == 0)):
         raise RuntimeError("Stability reference is not phase locked at zero")
     initial_contacts = c.contact_cache.clone()
+    initial_desired = c.desired[reference_ids(env.device)].clone()
     initial = raw_state(env).reshape(
         args.references, MASTER_STENCIL, RAW_STATE_DIM).cpu().numpy()
     obs = wrapped.get_observations()
@@ -228,6 +226,8 @@ def collect_condition(env, wrapped, policy, period_ticks, settled_result):
         num_envs, device=env.device, dtype=torch.bool)
     contact_trace, desired_trace = [], []
     feet_trace, velocity_trace, failure_trace = [], [], []
+    lateral_trace, heading_trace = [], []
+    lateral_velocity_trace, yaw_rate_trace = [], []
     stencil_substeps = []
     env.capture_substeps = True
     for _ in range(period_ticks):
@@ -239,6 +239,17 @@ def collect_condition(env, wrapped, policy, period_ticks, settled_result):
         feet_trace.append(transition["feet_body"][refs].cpu().numpy())
         velocity_trace.append(
             transition["forward_velocity"][refs].cpu().numpy())
+        lateral_trace.append(
+            transition["body"][refs, 1].cpu().numpy())
+        quat = transition["root_quat"][refs]
+        yaw = torch.atan2(
+            2 * (quat[:, 0] * quat[:, 3] + quat[:, 1] * quat[:, 2]),
+            1 - 2 * (quat[:, 2].square() + quat[:, 3].square()))
+        heading_trace.append(yaw.cpu().numpy())
+        lateral_velocity_trace.append(
+            transition["world_lateral_velocity"][refs].cpu().numpy())
+        yaw_rate_trace.append(
+            transition["body_yaw_rate"][refs].cpu().numpy())
         failure_trace.append(transition["failure"][refs].cpu().numpy())
         if len(env.substep_contacts) != env.cfg.decimation:
             raise RuntimeError("Missing 200 Hz contact samples")
@@ -261,8 +272,16 @@ def collect_condition(env, wrapped, policy, period_ticks, settled_result):
         "settle_done": settle_done,
         "nominal_contacts": np.stack(contact_trace, axis=1),
         "nominal_desired": np.stack(desired_trace, axis=1),
+        "desired_initial_contacts": initial_desired.cpu().numpy(),
+        "desired_substep_contacts": np.repeat(
+            np.stack(desired_trace, axis=1), env.cfg.decimation, axis=1),
         "nominal_feet_body": np.stack(feet_trace, axis=1),
         "nominal_forward_velocity": np.stack(velocity_trace, axis=1),
+        "nominal_lateral_position": np.stack(lateral_trace, axis=1),
+        "nominal_heading": np.stack(heading_trace, axis=1),
+        "nominal_world_lateral_velocity":
+            np.stack(lateral_velocity_trace, axis=1),
+        "nominal_body_yaw_rate": np.stack(yaw_rate_trace, axis=1),
         "nominal_failure": np.stack(failure_trace, axis=1),
         "zero_initial_states": initial[:, layout["zero_clones"]],
         "zero_final_states": final[:, layout["zero_clones"]],
@@ -281,16 +300,6 @@ def collect_condition(env, wrapped, policy, period_ticks, settled_result):
             "stencil_substep_contacts": contact_master[:, local],
         }
     return result
-
-
-def evaluation_hash():
-    paths = [
-        ROOT / "source/beam_walking/beam_walking/experiment/stability.py",
-        ROOT / "scripts/stability_experiment.py",
-        ROOT / "scripts/analyze_stability.py",
-        ROOT / "scripts/gpu_capacity.py",
-    ]
-    return hashlib.sha256(b"".join(path.read_bytes() for path in paths)).hexdigest()
 
 
 def main():
@@ -322,7 +331,41 @@ def main():
         raise ValueError(
             "Stability checkpoint must match the current task/protocol source")
     checkpoint_hash = hashlib.sha256(args.checkpoint.read_bytes()).hexdigest()
-    eval_hash = evaluation_hash()
+    training_provenance_path = args.checkpoint.parent / "provenance.json"
+    if not training_provenance_path.is_file():
+        raise ValueError("Checkpoint training provenance.json is required")
+    training_provenance = json.loads(training_provenance_path.read_text())
+    current_training_source = training_source_hash(ROOT)
+    expected_lineage = (
+        hashlib.sha256(
+            f"{current_training_source}:{training_provenance.get('seed')}:fresh_v1".encode()
+        ).hexdigest()
+        if isinstance(training_provenance.get("seed"), int) else None)
+    if (
+        training_provenance.get("mode") != "train"
+        or training_provenance.get("task_sha256") != task_hash
+        or not isinstance(training_provenance.get("seed"), int)
+        or training_provenance.get("fresh_training") is not True
+        or "checkpoint" in training_provenance
+        or training_provenance.get("training_lineage_id") != expected_lineage
+        or training_provenance.get("training_source_sha256")
+            != current_training_source
+        or training_provenance.get("training_iterations_requested")
+            != CONFIRMATORY_TRAINING_ITERATIONS
+        or training_provenance.get("checkpoint_selection_rule")
+            != "final_requested_iteration"
+        or not isinstance(training_provenance.get("training_num_envs"), int)
+        or training_provenance.get("training_num_envs") < 1
+        or runner.current_learning_iteration
+            != CONFIRMATORY_TRAINING_ITERATIONS - 1
+    ):
+        raise ValueError(
+            "Stability claims require a fresh, parent-free training lineage "
+            "with matching task source and integer seed")
+    training_provenance_bytes = training_provenance_path.read_bytes()
+    training_provenance_hash = hashlib.sha256(
+        training_provenance_bytes).hexdigest()
+    eval_hash = evaluation_source_hash(ROOT)
     policy = runner.get_inference_policy(device=env.device)
 
     conditions = []
@@ -349,25 +392,61 @@ def main():
             "No physically valid gait/DF/period conditions were requested")
     manifest = {
         "schema": "beam_stability_v2",
-        "paper_metric_primary": "chi=sigma_max(Phi_augmented_full_48D)",
-        "supplementary_metric": "orbital maps remove global x/y",
+        "paper_metric_primary":
+            "chi_orb=sigma_max(Phi_orbital_augmented_46D)",
+        "primary_metric_scope":
+            "translation-reduced learned-controller analogue",
+        "unquotiented_full_48d_is_diagnostic": True,
         "single_policy_results_are_descriptive": True,
         "minimum_policies_for_claim": 5,
+        "confirmatory_grid": confirmatory_protocol(
+            condition_keys=[
+                (item["period"], item["gait"], item["speed"],
+                 item["step_width"], item["duty_factor"],
+                 item["perturbation_h"])
+                for item in conditions],
+            references=args.references, settle_cycles=args.settle_cycles,
+            perturbation_sizes=args.perturbation_sizes,
+            zero_clones=ZERO_CLONES, master_stencil_size=MASTER_STENCIL,
+            evaluation_reference_seed=args.seed,
+            training_iterations_requested=training_provenance[
+                "training_iterations_requested"],
+            checkpoint_iteration=runner.current_learning_iteration,
+            fresh_training=training_provenance["fresh_training"]),
         "terrain": "flat_ground", "external_pushes": False,
         "state_dimension_physical": 36,
         "state_dimension_augmented": 48,
         "state_scales": STATE_SCALES.tolist(),
+        "tangent_labels": list(__import__(
+            "beam_walking.experiment.stability",
+            fromlist=["TANGENT_LABELS"]).TANGENT_LABELS),
         "references": args.references,
         "zero_clones_per_reference": ZERO_CLONES,
         "master_stencil_size": MASTER_STENCIL,
         "settle_cycles": args.settle_cycles,
-        "settle_group_rms_limit": 1e-3,
-        "zero_clone_noise_fraction_of_h_limit": .05,
-        "initial_stencil_max_error_limit": 1e-3,
-        "initial_condition_number_limit": 1.05,
+        "settle_group_rms_limit":
+            FROZEN_GATE_LIMITS["settle_group_rms"],
+        "zero_clone_noise_fraction_of_h_limit":
+            FROZEN_GATE_LIMITS["zero_clone_noise_fraction_of_h"],
+        "initial_stencil_max_error_limit":
+            FROZEN_GATE_LIMITS["initial_stencil_max_error"],
+        "initial_condition_number_limit":
+            FROZEN_GATE_LIMITS["initial_condition_number"],
+        "translation_symmetry_residual_limit":
+            FROZEN_GATE_LIMITS["translation_symmetry_residual"],
+        "gate_limits": FROZEN_GATE_LIMITS,
+        "evaluation_reference_seed": args.seed,
         "expected_conditions": conditions,
         "expected_files": [item["filename"] for item in conditions],
         "reference_initial_offset_half_width_normalized": .02,
+        "reference_initialization":
+            "canonical_default_plus_matched_offsets_v1",
+        "training_source_sha256": current_training_source,
+        "training_num_envs": training_provenance["training_num_envs"],
+        "training_iterations_requested":
+            training_provenance["training_iterations_requested"],
+        "checkpoint_selection_rule": "final_requested_iteration",
+        "checkpoint_iteration": runner.current_learning_iteration,
         "gait_regime": {
             "trot_df": [.50, .75], "walk_df": [.75, .75],
             "minimum_swing_s": MIN_SWING_STEPS * CONTROL_DT,
@@ -376,6 +455,13 @@ def main():
         "evaluation_sha256": eval_hash,
         "checkpoint_sha256": checkpoint_hash,
         "checkpoint": str(args.checkpoint.resolve()),
+        "training_seed": training_provenance["seed"],
+        "fresh_training": True,
+        "training_lineage_id": training_provenance["training_lineage_id"],
+        "training_provenance_source":
+            str(training_provenance_path.resolve()),
+        "training_provenance_file": "training_provenance.json",
+        "training_provenance_sha256": training_provenance_hash,
         "joint_order": list(env.scene["robot"].joint_names),
         "action_order": list(env.scene["robot"].joint_names),
         "capacity": capacity,
@@ -387,12 +473,15 @@ def main():
     }
     (args.output / "stability_manifest.json").write_text(
         json.dumps(manifest, indent=2))
+    (args.output / "training_provenance.json").write_bytes(
+        training_provenance_bytes)
     shutil.copytree(
         ROOT / "source/beam_walking/beam_walking/experiment",
         args.output / "source_snapshot" / "experiment",
         ignore=shutil.ignore_patterns("__pycache__"))
     for filename in (
-        "stability_experiment.py", "analyze_stability.py", "gpu_capacity.py",
+        "stability_experiment.py", "analyze_stability.py",
+        "analyze_stability_ensemble.py", "gpu_capacity.py",
     ):
         shutil.copy2(
             ROOT / "scripts" / filename,

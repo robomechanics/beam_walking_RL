@@ -6,9 +6,12 @@ CONTROL_DT = .02
 CYCLE_STEPS = round(PERIOD / CONTROL_DT)
 OFFSETS = (0., .5, .5, 0.)
 GAITS = ("trot", "walk")
-# Leg order FL, FR, RL, RR. Walk phase-zero events: FL -> RR -> FR -> RL.
-# Trot groups: FL+RR -> FR+RL. Offsets specify phase, not a steering command.
-GAIT_OFFSETS = (OFFSETS, (0., .5, .25, .75))
+# The supplied paper draft reports walk (0,.75,.50,.25) and trot
+# (0,.50,.50,0). It does not state a different leg order, so this experiment
+# freezes those tuples in the repository order FL,FR,RL,RR. Walk touchdown
+# order is FL -> FR -> RL -> RR; trot groups FL+RR -> FR+RL.
+GAIT_OFFSETS = (OFFSETS, (0., .75, .50, .25))
+WALK_TOUCHDOWN_ORDER = ("FL", "FR", "RL", "RR")
 PERIOD_TICKS = tuple(range(18, 28))  # 0.36 through 0.54 s at 50 Hz.
 STEP_WIDTH_RANGE = (.10, .50)
 SPEED_RANGE = (.25, .40)
@@ -22,6 +25,14 @@ WIDTHS = (.8, .45, .30, .20)
 FOUNDATION_CONTROL_STEPS = 2400  # 50 PPO updates with the 48-step rollout horizon.
 CORE_CONTROL_STEPS = 7200        # Expand period/interpolation after 150 updates.
 ANCHOR_FRACTION = .75
+
+
+def validate_scientific_gait_duties(gait, duties):
+    """Reject unsupported four-beat walk cells in confirmatory evaluation."""
+    if gait not in GAITS:
+        raise ValueError(f"Unknown gait: {gait}")
+    if gait == "walk" and any(abs(float(duty) - .75) > 1e-7 for duty in duties):
+        raise ValueError("Four-beat walk is confirmatory only at duty factor 0.75")
 
 
 def leg_phase(ticks, period_ticks=None, gait=None):

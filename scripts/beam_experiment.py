@@ -9,10 +9,9 @@ faulthandler.dump_traceback_later(90, repeat=True)
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "source/beam_walking"))
-from beam_walking.experiment.protocol import GAITS, GAIT_OFFSETS, PERIOD_TICKS, CONTROL_DT, MIN_SWING_STEPS, STEP_WIDTH_FRAME
-from beam_walking.experiment.checkpoint_utils import (
-    validate_noise_reset, reset_action_std, migrate_heading_observation,
-)
+from beam_walking.experiment.protocol import (GAITS, GAIT_OFFSETS, PERIOD_TICKS, CONTROL_DT,
+    MIN_SWING_STEPS, STEP_WIDTH_FRAME, validate_scientific_gait_duties)
+from beam_walking.experiment.stability import training_source_hash
 from isaaclab.app import AppLauncher
 
 parser = argparse.ArgumentParser()
@@ -22,18 +21,12 @@ parser.add_argument("--iterations", type=int, default=1800)
 parser.add_argument("--seed", type=int)
 parser.add_argument("--split", choices=["validation", "test"], default="validation")
 parser.add_argument("--checkpoint", type=Path)
-parser.add_argument("--reward_revision", action="store_true",
-                    help="Explicit training-only transfer across reviewed reward sources; retain model/iteration/curriculum, reset optimizer")
-parser.add_argument("--reset_action_std", type=float,
-                    help="Explicit learned Gaussian std reset, only with reward-revision training")
-parser.add_argument("--migrate_heading_observation", action="store_true",
-                    help="Explicit 62-to-63 input migration for heading-feedback training")
 parser.add_argument("--output", type=Path, default=ROOT / "results/ppo_flat")
 parser.add_argument("--steps", type=int, default=200)
 parser.add_argument("--stance_start_probability", type=float, default=.10)
 parser.add_argument("--video", action="store_true")
 parser.add_argument("--camera_env", type=int, default=0)
-parser.add_argument("--dfs", type=float, nargs="+", default=[.5, .625, .75])
+parser.add_argument("--dfs", type=float, nargs="+")
 parser.add_argument("--gait", choices=GAITS, default="trot", help="Fixed gait for one evaluation grid")
 parser.add_argument("--period", type=float, default=.48, help="Evaluation period, 0.36-0.54 s in 0.02 s increments")
 parser.add_argument("--speed", type=float, default=.30, help="Fixed evaluation speed, 0.25-0.40 m/s")
@@ -41,15 +34,8 @@ parser.add_argument("--step_widths", type=float, nargs="+", default=[.10, .20, .
                     help="Full left-right foot separations for flat-ground evaluation")
 AppLauncher.add_app_launcher_args(parser)
 args = parser.parse_args()
-if args.reward_revision and (args.mode != "train" or args.checkpoint is None):
-    parser.error("--reward_revision requires train mode and a source checkpoint")
-try:
-    validate_noise_reset(args.mode, args.reward_revision, args.checkpoint, args.reset_action_std)
-except ValueError as error:
-    parser.error(str(error))
-if args.migrate_heading_observation and not (
-        args.mode == "train" and args.reward_revision and args.checkpoint is not None):
-    parser.error("--migrate_heading_observation requires train, --reward_revision, and a checkpoint")
+if args.dfs is None:
+    args.dfs = [.75] if args.mode == "evaluate" and args.gait == "walk" else [.5, .625, .75]
 if not 0. <= args.stance_start_probability <= 1.:
     parser.error("Stance-start probability must be in [0,1]")
 if args.mode == "benchmark" and args.iterations == 1800:
@@ -65,6 +51,11 @@ if any(df < .5 or df > min(.75, 1 - MIN_SWING_STEPS / period_ticks) + 1e-7 for d
     parser.error("DF/period combination must leave at least 0.10 s requested swing; use a longer period or lower DF")
 if len(set(args.step_widths)) != len(args.step_widths) or len(set(args.dfs)) != len(args.dfs):
     parser.error("Evaluation widths and DFs must not contain duplicates")
+if args.mode == "evaluate":
+    try:
+        validate_scientific_gait_duties(args.gait, args.dfs)
+    except ValueError as error:
+        parser.error(str(error))
 if args.seed is None:
     args.seed = (10000 if args.split == "validation" else 1000000) if args.mode == "evaluate" else 42
 if args.mode == "evaluate":
@@ -106,7 +97,8 @@ def main():
     snapshot = args.output / "source_snapshot"
     shutil.copytree(ROOT / "source/beam_walking/beam_walking/experiment", snapshot / "experiment", ignore=shutil.ignore_patterns("__pycache__"))
     for filename in ["beam_experiment.py", "gpu_capacity.py", "analyze_beam.py",
-                     "watch_training.py", "stability_experiment.py", "analyze_stability.py"]:
+                     "watch_training.py", "stability_experiment.py", "analyze_stability.py",
+                     "analyze_stability_ensemble.py"]:
         source = ROOT / "scripts" / filename
         if source.exists():
             shutil.copy2(source, snapshot / filename)
@@ -134,24 +126,27 @@ def main():
     agent.seed = args.seed
     agent.device = cfg.sim.device
     agent.max_iterations = args.iterations
-    if args.reward_revision:
-        agent.algorithm.learning_rate = 1e-4
-        agent.algorithm.schedule = "fixed"
-        agent.algorithm.clip_param = .1
-    if args.reset_action_std is not None:
-        agent.policy.init_noise_std = args.reset_action_std
     dump_yaml(str(args.output / "env.yaml"), cfg)
     dump_yaml(str(args.output / "agent.yaml"), agent)
     metadata = {"argv": sys.argv, "seed": args.seed, "mode": args.mode, "split": args.split,
-        "reward_revision": args.reward_revision,
-        "optimizer_reset_on_load": args.reward_revision,
         "step_width_frame": STEP_WIDTH_FRAME,
         "git_revision": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
         "versions": {n: importlib.metadata.version(n) for n in ["torch", "isaaclab", "isaacsim", "rsl-rl-lib"]},
         "gpu": torch.cuda.get_device_name(),
         "task_sha256": hashlib.sha256(b"".join(
             (ROOT / "source/beam_walking/beam_walking/experiment" / name).read_bytes()
-            for name in ["task.py", "protocol.py"])).hexdigest()}
+            for name in ["task.py", "protocol.py"])).hexdigest(),
+        "training_source_sha256": training_source_hash(ROOT),
+        "training_num_envs": args.num_envs,
+        "training_iterations_requested": args.iterations,
+        "checkpoint_selection_rule": "final_requested_iteration"}
+    metadata["fresh_training"] = bool(
+        args.mode == "train" and args.checkpoint is None)
+    metadata["training_lineage_id"] = (
+        hashlib.sha256(
+            f"{metadata['training_source_sha256']}:{args.seed}:fresh_v1".encode()
+        ).hexdigest()
+        if metadata["fresh_training"] else None)
     if args.checkpoint:
         metadata["checkpoint"] = str(args.checkpoint.resolve())
         metadata["checkpoint_sha256"] = hashlib.sha256(args.checkpoint.read_bytes()).hexdigest()
@@ -159,6 +154,32 @@ def main():
     if args.mode == "smoke":
         env.capture = True
         obs, _ = wrapped.reset()
+        if obs["policy"].shape != (args.num_envs, 68):
+            raise RuntimeError(
+                f"Expected 68 policy observations, got {obs['policy'].shape}")
+        if env.action_manager.action.shape != (args.num_envs, 12):
+            raise RuntimeError(
+                f"Expected 12 joint-position actions, got "
+                f"{env.action_manager.action.shape}")
+        robot = env.scene["robot"]
+        gain_ratios = []
+        for actuator in robot.actuators.values():
+            indices = actuator.joint_indices
+            current_kp = actuator.stiffness
+            current_kd = actuator.damping
+            nominal_kp = robot.data.default_joint_stiffness[:, indices]
+            nominal_kd = robot.data.default_joint_damping[:, indices]
+            gain_ratios.extend([
+                current_kp / nominal_kp,
+                current_kd / nominal_kd,
+            ])
+        gain_ratios = torch.cat(
+            [value.reshape(-1) for value in gain_ratios])
+        if not bool(torch.all(
+            (gain_ratios >= .90 - 1e-6)
+            & (gain_ratios <= 1.10 + 1e-6)
+        )):
+            raise RuntimeError("Startup motor gain randomization left [0.90,1.10]")
         first_contacts = None
         first_failures = None
         for _ in range(args.steps):
@@ -172,27 +193,26 @@ def main():
                     assert not any(first_failures), "Grounded reset spuriously failed"
         (args.output / "smoke_checks.json").write_text(json.dumps({
             "first_contact_counts": first_contacts, "first_failures": first_failures,
-            "steps": args.steps, "finite_observations_rewards": True}, indent=2))
+            "steps": args.steps, "finite_observations_rewards": True,
+            "policy_observation_dimension": 68,
+            "action_dimension": 12,
+            "motor_gain_ratio_min": float(gain_ratios.min().cpu()),
+            "motor_gain_ratio_max": float(gain_ratios.max().cpu())}, indent=2))
         print("SMOKE_OK", obs["policy"].shape, "feet", command(env).feet, flush=True)
     else:
         runner = OnPolicyRunner(wrapped, agent.to_dict(), log_dir=str(args.output), device=env.device)
         if args.checkpoint:
-            if args.migrate_heading_observation:
-                checkpoint_payload = torch.load(args.checkpoint, weights_only=False, map_location="cpu")
-                metadata["heading_observation_migration"] = migrate_heading_observation(
-                    runner.alg.policy, checkpoint_payload["model_state_dict"])
-                runner.current_learning_iteration = checkpoint_payload["iter"]
-                saved_info = checkpoint_payload["infos"]
-            else:
-                saved_info = runner.load(str(args.checkpoint), load_optimizer=not args.reward_revision)
+            saved_info = runner.load(
+                str(args.checkpoint),
+                load_optimizer=args.mode in ("train", "benchmark"))
             if not saved_info or not saved_info.get("task_sha256"):
-                raise ValueError("Checkpoint has no source identity; cannot resume or transfer")
-            if saved_info["task_sha256"] != metadata["task_sha256"] and not args.reward_revision:
-                raise ValueError("Checkpoint task differs from current implementation; use its saved source")
+                raise ValueError("Checkpoint has no source identity; cannot resume")
+            if saved_info["task_sha256"] != metadata["task_sha256"]:
+                raise ValueError(
+                    "Checkpoint task differs from the current 68D experiment; "
+                    "train a fresh controller or use its saved source")
             metadata["checkpoint_task_sha256"] = saved_info["task_sha256"]
             metadata["checkpoint_iteration"] = runner.current_learning_iteration
-            if args.reset_action_std is not None:
-                metadata["action_std_reset"] = reset_action_std(runner.alg.policy, args.reset_action_std)
             (args.output / "provenance.json").write_text(json.dumps(metadata, indent=2))
             if args.mode in ["train", "benchmark"]:
                 env.common_step_counter = (saved_info or {}).get("common_step_counter", (runner.current_learning_iteration + 1) * agent.num_steps_per_env)

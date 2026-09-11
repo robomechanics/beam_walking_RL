@@ -12,10 +12,35 @@ from beam_walking.experiment.protocol import (
     speed_score, planar_speed_score, world_to_body, normalized_gait_command,
     sample_training_commands, fore_aft_target, FOUNDATION_CONTROL_STEPS,
     CORE_CONTROL_STEPS, SPEED_ANCHORS, DUTY_ANCHORS, STEP_WIDTH_ANCHORS,
+    GAIT_OFFSETS, WALK_TOUCHDOWN_ORDER, validate_scientific_gait_duties,
 )
 
 
 class RewardShapingTest(unittest.TestCase):
+
+
+    def test_paper_walk_offsets_touchdown_order_and_support_count(self):
+        self.assertEqual(GAIT_OFFSETS[1], (0., .75, .50, .25))
+        ticks = torch.arange(24)
+        period = torch.full_like(ticks, 24)
+        gait = torch.ones_like(ticks)
+        phase = leg_phase(ticks, period, gait)
+        self.assertTrue(torch.all((phase < .75).sum(dim=1) == 3))
+        wrap_ticks = []
+        for leg in range(4):
+            wraps = ((phase[1:, leg] < phase[:-1, leg]).nonzero().flatten() + 1)
+            wrap_ticks.append(int(wraps[0]) if len(wraps) else 24)
+        after_phase_zero = tuple(
+            ("FL", "FR", "RL", "RR")[index]
+            for index in sorted(range(4), key=lambda index: wrap_ticks[index])
+            if index != 0)
+        self.assertEqual(("FL",) + after_phase_zero, WALK_TOUCHDOWN_ORDER)
+
+    def test_scientific_walk_rejects_low_duty_factor(self):
+        validate_scientific_gait_duties("trot", [.5, .625, .75])
+        validate_scientific_gait_duties("walk", [.75])
+        with self.assertRaisesRegex(ValueError, "0.75"):
+            validate_scientific_gait_duties("walk", [.625, .75])
 
     def test_normalized_commands_and_explicit_gait_encoding(self):
         values = torch.tensor([[.25, .50, .10, .36, 0.], [.40, .75, .50, .54, 1.]])

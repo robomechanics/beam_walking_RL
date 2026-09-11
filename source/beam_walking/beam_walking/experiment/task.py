@@ -354,6 +354,10 @@ class BeamEnv(ManagerBasedRLEnv):
         # note: checked here once to avoid multiple checks within the loop
         is_rendering = self.sim.has_gui() or self.sim.has_rtx_sensors()
 
+        # Optional high-rate contact capture is enabled only by the stability
+        # evaluator; ordinary training does not retain these tensors.
+        if getattr(self, "capture_substeps", False):
+            self.substep_contacts = []
         # perform physics stepping
         for _ in range(self.cfg.decimation):
             self._sim_step_counter += 1
@@ -374,6 +378,8 @@ class BeamEnv(ManagerBasedRLEnv):
             forces = self.scene["contact_forces"].data.net_forces_w
             c.contact_cache[:] = forces[:, c.sensor_feet].norm(dim=-1) > 5.
             c.nonfoot_cache[:] = (forces[:, c.sensor_other].norm(dim=-1) > 1.).any(dim=1)
+            if getattr(self, "capture_substeps", False):
+                self.substep_contacts.append(c.contact_cache.clone())
             self.substep_failure |= instantaneous_failure(self)
 
         # post-step:
@@ -496,8 +502,7 @@ class BeamPPORunnerCfg(UnitreeGo2FlatPPORunnerCfg):
         self.policy.critic_hidden_dims = [256, 128, 128]
         self.policy.init_noise_std = .5
         self.algorithm.entropy_coef = .001
-        # Fresh-training profile. The launcher explicitly applies conservative
-        # settings only for legacy reward-revision transfers.
+        # Fresh-training profile; incompatible historical checkpoints are rejected.
         self.num_steps_per_env = 48
         self.algorithm.gamma = .995
         self.algorithm.learning_rate = 1e-3

@@ -54,6 +54,8 @@ def synthetic_run(directory, period=.48, gait="trot", widths=(.1, .5), dfs=(.5, 
                 contacts=desired, desired=desired, schedule_duty=np.mean(desired[:round(period/.02)], axis=0),
                 commands=commands, body=body, feet=feet, speed=np.full((steps, n), .3),
                 forward_velocity=np.full((steps, n), .3), force=np.zeros((steps, n, 3)),
+                root_quat=np.broadcast_to(
+                    [1., 0., 0., 0.], (steps, n, 4)).copy(),
                 world_lateral_velocity=np.full((steps, n), -.04),
                 body_lateral_velocity=np.full((steps, n), .02),
                 body_yaw_rate=np.full((steps, n), -.03),
@@ -149,7 +151,7 @@ class MetricsTest(unittest.TestCase):
                         self.assertAlmostEqual(row["achieved_width"], .5)
                         self.assertEqual(row["step_width_frame"], "world")
                         self.assertEqual(row["achieved_width"], row["world_achieved_width"])
-                        self.assertTrue(np.isnan(row["body_achieved_width"]))
+                        self.assertAlmostEqual(row["body_achieved_width"], .5)
                         self.assertAlmostEqual(row["forward_speed"], .3)
                         self.assertAlmostEqual(row["settled_body_forward_speed"], .3)
                         self.assertEqual(row["lateral_rmse"], 0.)
@@ -274,8 +276,11 @@ class MetricsTest(unittest.TestCase):
                     self.assertAlmostEqual(row["max_abs_heading_rad"], angle)
                 with contextlib.redirect_stdout(io.StringIO()):
                     summary = analyze(directory)
-                self.assertTrue(summary.compliance_screen_pass.all())
-                # Heading is reported, without imposing an unplanned new cutoff.
+                self.assertEqual(
+                    bool(summary.compliance_screen_pass.all()),
+                    angle == 0.)
+                # Width remains body-frame correct, but a 60-degree yaw fails
+                # the independent straight-path compliance gate.
                 self.assertTrue(summary.step_width_frame.eq("body").all())
 
     def test_body_axes_require_full_rotation_and_verified_capture(self):

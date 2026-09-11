@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 import numpy as np
+from .protocol import GAIT_OFFSETS
 
 LEGS = ("FL", "FR", "RL", "RR")
 OFFSETS = (0., .5, .5, 0.)
@@ -156,7 +157,7 @@ def trial_rows(path):
         d = {key: archive[key] for key in archive.files}
     frame, body_feet, yaw = validate_width_frame(d)
     period, gait = float(d["period"]), str(d["gait"])
-    offsets_by_gait = {"trot": (0., .5, .5, 0.), "walk": (0., .5, .25, .75)}
+    offsets_by_gait = {"trot": GAIT_OFFSETS[0], "walk": GAIT_OFFSETS[1]}
     if gait not in offsets_by_gait or not np.allclose(d["phase_offsets"], offsets_by_gait[gait]):
         raise ValueError(f"Invalid gait or phase offsets: {path}")
     rows = []
@@ -271,6 +272,14 @@ def analyze(directory):
             raise ValueError(f"Analyze one fixed {key} per directory")
     table["achieved_df"] = table[[f"df_{x}" for x in LEGS]].mean(axis=1)
     table["df_max_abs_error"] = table[[f"df_{x}" for x in LEGS]].sub(table.command_df, axis=0).abs().max(axis=1)
+    # Frozen straight-path gates. Missing legacy diagnostics fail rather than
+    # silently passing a controller that turns or weaves.
+    for key in (
+        "heading_rmse_rad", "max_abs_heading_rad",
+        "world_lateral_velocity_rmse", "body_yaw_rate_rmse",
+    ):
+        if key not in table:
+            table[key] = np.nan
     table["compliance_pass"] = (
         table[[f"cycles_{x}" for x in LEGS]].ge(1).all(axis=1)
         & table[[f"df_{x}" for x in LEGS]].sub(table.command_df, axis=0).abs().le(.05).all(axis=1)
@@ -280,6 +289,10 @@ def analyze(directory):
         & table.foot_lateral_mae.le(.015)
         & table.lateral_rmse.le(.10)
         & table.max_lateral_deviation.le(.20)
+        & table.heading_rmse_rad.le(.10)
+        & table.max_abs_heading_rad.le(.25)
+        & table.world_lateral_velocity_rmse.le(.10)
+        & table.body_yaw_rate_rmse.le(.50)
         & (table.achieved_width - table.command_width).abs().le(.03)
         & (table.forward_speed - table.command_speed).abs().le(.04))
     table.to_csv(directory / "trials.csv", index=False)
