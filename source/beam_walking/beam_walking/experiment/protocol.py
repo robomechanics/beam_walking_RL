@@ -14,6 +14,15 @@ GAIT_OFFSETS = (OFFSETS, (0., .75, .50, .25))
 WALK_TOUCHDOWN_ORDER = ("FL", "FR", "RL", "RR")
 PERIOD_TICKS = tuple(range(18, 28))  # 0.36 through 0.54 s at 50 Hz.
 STEP_WIDTH_RANGE = (.10, .50)
+# Narrow-beam extension (opt-in via beam_experiment.py --min_step_width). When
+# set, training samples widths down to this value while the observation
+# normalization keeps STEP_WIDTH_RANGE, so the 68-dim interface is unchanged and
+# narrow commands simply map below -1. Widths under ~0.06 m put the 0.044 m toes
+# within a few mm of each other; self-collision is off in simulation.
+NARROW_WIDTH_MIN = None
+# Gaussian variance (m^2) of the per-foot lateral placement reward; the frozen
+# protocol uses .01 (10 cm scale). --width_tolerance sets sigma directly.
+WIDTH_SCORE_VARIANCE = .01
 SPEED_RANGE = (.25, .40)
 DUTY_RANGE = (.50, .75)
 SPEED_ANCHORS = (.25, .30, .35, .40)
@@ -26,6 +35,20 @@ WIDTHS = (.8, .45, .30, .20)
 FOUNDATION_CONTROL_STEPS = 2400  # 50 PPO updates with the 48-step rollout horizon.
 CORE_CONTROL_STEPS = 7200        # Expand period/interpolation after 150 updates.
 ANCHOR_FRACTION = .75
+
+
+def training_width_range():
+    """Sampling range for continuous width commands (narrow extension aware)."""
+    low = STEP_WIDTH_RANGE[0] if NARROW_WIDTH_MIN is None else NARROW_WIDTH_MIN
+    return (low, STEP_WIDTH_RANGE[1])
+
+
+def training_width_anchors():
+    """Anchor widths for the stratified stage, with narrow anchors when enabled."""
+    if NARROW_WIDTH_MIN is None:
+        return STEP_WIDTH_ANCHORS
+    mid = round(.5 * (NARROW_WIDTH_MIN + STEP_WIDTH_RANGE[0]), 3)
+    return (NARROW_WIDTH_MIN, mid) + STEP_WIDTH_ANCHORS
 
 
 def advance_phase_ticks(ticks, period_ticks, reset_mask):
@@ -108,13 +131,13 @@ def sample_training_commands(count, common_control_step, device="cpu"):
         values[:core_count, 1] = strata[stratum, 1]
         for stratum_index in range(len(COMMAND_STRATA)):
             ids = (stratum == stratum_index).nonzero().flatten()
-            combinations = len(SPEED_ANCHORS) * len(STEP_WIDTH_ANCHORS)
+            anchors = training_width_anchors()
+            combinations = len(SPEED_ANCHORS) * len(anchors)
             combo = _balanced_indices(len(ids), combinations, device)
-            width = combo % len(STEP_WIDTH_ANCHORS)
-            speed = combo // len(STEP_WIDTH_ANCHORS)
+            width = combo % len(anchors)
+            speed = combo // len(anchors)
             values[ids, 0] = torch.tensor(SPEED_ANCHORS, device=device)[speed]
-            values[ids, 2] = torch.tensor(
-                STEP_WIDTH_ANCHORS, device=device)[width]
+            values[ids, 2] = torch.tensor(anchors, device=device)[width]
 
     remaining = count - core_count
     if remaining:
@@ -153,9 +176,10 @@ def sample_training_commands(count, common_control_step, device="cpu"):
         values[target, 1] = torch.where(
             gait == GAITS.index("walk"),
             torch.full_like(sampled_df, .75), sampled_df)
+        width_range = training_width_range()
         values[target, 2] = (
-            STEP_WIDTH_RANGE[0]
-            + (STEP_WIDTH_RANGE[1] - STEP_WIDTH_RANGE[0])
+            width_range[0]
+            + (width_range[1] - width_range[0])
             * torch.rand(remaining, device=device)
         )
         order = torch.randperm(count, device=device)
@@ -248,7 +272,7 @@ def duty_warped_phase(phase, duty):
 
 def width_score(lateral_error):
     """All-foot squared error before the Gaussian prevents sacrificing two feet."""
-    return torch.exp(-lateral_error.square().mean(dim=1) / .01)
+    return torch.exp(-lateral_error.square().mean(dim=1) / WIDTH_SCORE_VARIANCE)
 
 
 def world_to_body(displacements, root_quaternion):

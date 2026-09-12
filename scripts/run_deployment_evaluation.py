@@ -15,7 +15,7 @@ sys.path.insert(0, str(ROOT / "source/beam_walking"))
 from beam_walking.experiment.deployment import (
     DAMPING_EVALUATION_SCALES, STIFFNESS_EVALUATION_SCALES,
 )
-from beam_walking.experiment.analysis import validate_manifest
+from beam_walking.experiment.analysis import validate_manifest, NOMINAL_EVALUATOR_PATHS
 
 
 parser = argparse.ArgumentParser()
@@ -25,6 +25,8 @@ parser.add_argument("--num_envs", type=int, default=64)
 parser.add_argument("--seed", type=int, default=20_000)
 parser.add_argument("--device", default="cuda:0")
 parser.add_argument("--headless", action="store_true")
+parser.add_argument("--reuse_from", type=Path,
+                    help="Reuse complete validated profiles from a previous sweep")
 args = parser.parse_args()
 
 if not args.checkpoint.is_file():
@@ -90,7 +92,61 @@ def validate_completed(directory, profile, gait, kp, kd, split, seed,
                 f"Resumed evaluation identity mismatch in {directory}: {key}")
 
 
+def reuse_profile(profile, kp, kd, split, seed):
+    """Reuse completed profiles after validating identity and unchanged science code."""
+    if args.reuse_from is None or split != "validation":
+        return None
+    directories = {gait: args.reuse_from / f"{profile}_{gait}"
+                   for gait in ("trot", "walk")}
+    files = [directories[gait] / name for gait in directories
+             for name in ("evaluation_complete.json", "summary.csv")]
+    readiness_path = directories["trot"] / "study_readiness.json"
+    if not all(path.is_file() for path in [*files, readiness_path]):
+        return None
+    checkpoint_hash = hashlib.sha256(args.checkpoint.read_bytes()).hexdigest()
+    for gait, directory in directories.items():
+        validate_completed(directory, profile, gait, kp, kd, split, seed, checkpoint_hash)
+        # Only admission of concurrent GPU processes may differ; all simulation,
+        # measurement and analysis code must match the archived evaluated version.
+        for relative in NOMINAL_EVALUATOR_PATHS:
+            if relative == "scripts/evaluation_capacity.py":
+                continue
+            archived = directory / "source_snapshot" / Path(relative).name
+            if archived.read_bytes() != (ROOT / relative).read_bytes():
+                raise RuntimeError(f"Reused profile science source differs: {relative}")
+        for filename in ("task.py", "protocol.py"):
+            if (directory / "source_snapshot" / filename).read_bytes() != (
+                    ROOT / "source/beam_walking/beam_walking/experiment" / filename).read_bytes():
+                raise RuntimeError(f"Reused task source differs: {filename}")
+    summary = pd.concat([pd.read_csv(directories[g] / "summary.csv")
+                         for g in directories], ignore_index=True)
+    readiness = json.loads(readiness_path.read_text())
+    if (len(summary) != 20 or readiness["cells"] != 20
+            or readiness["checkpoint_sha256"] != checkpoint_hash
+            or readiness["passed_cells"] != int(summary.combined_cell_pass.astype(bool).sum())):
+        raise RuntimeError("Cached profile summary/readiness identity mismatch")
+    artifact_hashes = {}
+    for directory in directories.values():
+        paths = [directory / filename for filename in
+                 ("summary.csv", "evaluation_manifest.json", "evaluation_complete.json")]
+        paths.extend(sorted(directory.glob("trial_*.npz")))
+        for path in paths:
+            artifact_hashes[str(path.resolve())] = hashlib.sha256(path.read_bytes()).hexdigest()
+    artifact_hashes[str(readiness_path.resolve())] = hashlib.sha256(readiness_path.read_bytes()).hexdigest()
+    index = args.output / "reused_profile_artifacts.json"
+    records = json.loads(index.read_text()) if index.is_file() else {}
+    if profile in records and records[profile] != artifact_hashes:
+        raise RuntimeError("Previously reused profile artifacts changed")
+    records[profile] = artifact_hashes
+    index.write_text(json.dumps(records, indent=2))
+    print("REUSED_PROFILE", profile, "cells", len(summary), flush=True)
+    return directories, readiness, summary
+
+
 def run_profile(profile, kp, kd, split, seed, name=None):
+    reused = reuse_profile(profile, kp, kd, split, seed)
+    if reused is not None:
+        return reused
     directories = {}
     checkpoint_sha256 = hashlib.sha256(args.checkpoint.read_bytes()).hexdigest()
     for gait in ("trot", "walk"):
@@ -136,7 +192,8 @@ def main():
         for profile, _, _ in profiles() for gait in ("trot", "walk")
     } | {"selected_test_trot", "selected_test_walk",
          "deployment_evaluation_progress.json", "deployment_robustness.json",
-         "run_deployment_evaluation.py"}
+         "run_deployment_evaluation.py", "reused_profile_artifacts.json",
+         "capacity_change_provenance.json"}
     if args.output.exists():
         unexpected = {
             path.name for path in args.output.iterdir()
@@ -163,6 +220,21 @@ def main():
         previous_final = json.loads(final_path.read_text())
         if previous_final.get("orchestrator_sha256") != orchestrator_sha256:
             raise RuntimeError("Deployment report selector hash mismatch")
+    if args.reuse_from is not None:
+        bridge = {
+            "reuse_from": str(args.reuse_from.resolve()),
+            "old_capacity_sha256": hashlib.sha256((args.reuse_from /
+                "nominal_trot/source_snapshot/evaluation_capacity.py").read_bytes()).hexdigest(),
+            "new_capacity_sha256": hashlib.sha256((ROOT /
+                "scripts/evaluation_capacity.py").read_bytes()).hexdigest(),
+            "only_permitted_evaluator_difference": "scripts/evaluation_capacity.py",
+            "old_evaluator_sha256": json.loads((args.reuse_from /
+                "nominal_trot/evaluation_manifest.json").read_text())["evaluator_sha256"],
+        }
+        bridge_path = args.output / "capacity_change_provenance.json"
+        if bridge_path.exists() and json.loads(bridge_path.read_text()) != bridge:
+            raise RuntimeError("Capacity-only reuse provenance changed")
+        bridge_path.write_text(json.dumps(bridge, indent=2))
     records = []
     progress_path.write_text(json.dumps({
         "schema": "go2_deployment_robustness_matrix_v1",

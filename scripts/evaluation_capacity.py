@@ -1,4 +1,4 @@
-"""Evaluation-only capacity gate with the user's narrow RustDesk exception."""
+"""Evaluation capacity checks; concurrent GPU processes are user-authorized."""
 from datetime import datetime, timezone
 import json
 import os
@@ -51,7 +51,7 @@ def check_evaluation_capacity(num_envs, device="cuda:0", video=False):
     required_system_mib = 8192 + num_envs * 2 + (2048 if video else 0)
     processes = _compute_processes(index)
     current_user = pwd.getpwuid(os.getuid()).pw_name
-    allowed, blocked = classify_compute_processes(processes, current_user)
+    allowed, other_processes = classify_compute_processes(processes, current_user)
     record = {
         "checked_at": datetime.now(timezone.utc).isoformat(),
         "checker_pid": os.getpid(), "gpu_index": index, "gpu": name,
@@ -63,17 +63,15 @@ def check_evaluation_capacity(num_envs, device="cuda:0", video=False):
         "required_system_mib": required_system_mib,
         "compute_processes": processes,
         "allowed_rustdesk_processes": allowed,
-        "blocked_compute_processes": blocked,
+        "blocked_compute_processes": [],
+        "other_compute_processes": other_processes,
+        "shared_gpu_authorized": True,
         "exclusive_compute_device": len(processes) == 0,
         "rustdesk_exception_applied": bool(allowed),
         "rustdesk_process_limit_mib": RUSTDESK_PROCESS_LIMIT_MIB,
         "rustdesk_total_limit_mib": RUSTDESK_TOTAL_LIMIT_MIB,
     }
     print("GPU_CAPACITY", json.dumps(record), flush=True)
-    if blocked:
-        raise RuntimeError(
-            "GPU has a compute process outside the narrow RustDesk exception; "
-            f"no process was stopped: {blocked}")
     if int(free) < required_mib or available_system_mib < required_system_mib:
         raise RuntimeError(
             f"Insufficient free memory to start evaluation: {record}")

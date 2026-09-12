@@ -7,6 +7,7 @@ from pathlib import Path
 import sys
 import unittest
 from types import SimpleNamespace
+from unittest.mock import patch
 from collections.abc import Sequence
 
 import torch
@@ -29,7 +30,8 @@ from beam_walking.experiment.deployment import (
     STANCE_START_PROBABILITY, TRAINING_ITERATIONS, TRAINING_NUM_ENVS,
     deployment_profile, deployment_profile_sha256,
     deployment_training_source_hash,
-    validate_gain_scales,
+    validate_gain_scales, initialize_deployment_policy,
+    deployment_finetune_lineage_valid, DEPLOYMENT_PARENT_SHA256,
 )
 
 
@@ -233,6 +235,38 @@ class DeploymentProfileTest(unittest.TestCase):
                     torch.testing.assert_close(env.settled_stance["joint_pos"][:, 0],
                                                torch.tensor([.1019, .1049]))
                 torch.testing.assert_close(motor.stiffness, torch.full((2, 12), 20.))
+
+    def test_finetune_loads_parent_weights_without_resuming_optimizer_or_iteration(self):
+        policy = torch.nn.Linear(3, 2)
+        parent = torch.nn.Linear(3, 2).state_dict()
+        optimizer = torch.optim.Adam(policy.parameters(), lr=1e-3)
+        runner = SimpleNamespace(alg=SimpleNamespace(policy=policy, optimizer=optimizer),
+                                 current_learning_iteration=1799)
+        module = "beam_walking.experiment.deployment"
+        with patch(module + ".deployment_parent_metadata", return_value={}), patch(
+                "torch.load", return_value={"model_state_dict": parent, "iter": 1799}):
+            result = initialize_deployment_policy(runner, "parent.pt", "hash")
+        self.assertTrue(result["initial_weights_match_parent"])
+        self.assertEqual(runner.current_learning_iteration, 0)
+        self.assertFalse(optimizer.state)
+        for key, value in policy.state_dict().items():
+            self.assertTrue(torch.equal(value, parent[key]))
+
+    def test_finetune_evaluation_binds_parent_in_both_provenance_and_checkpoint(self):
+        training = {"training_kind": "deployment_finetune", "fresh_training": False,
+                    "parent_checkpoint_sha256": DEPLOYMENT_PARENT_SHA256,
+                    "parent_training_seed": 2, "parent_checkpoint_iteration": 1799,
+                    "initial_weights_match_parent": True}
+        saved = {"training_kind": "deployment_finetune",
+                 "parent_checkpoint_sha256": DEPLOYMENT_PARENT_SHA256}
+        self.assertTrue(deployment_finetune_lineage_valid(training, saved))
+        for record in (training, saved):
+            original = record["parent_checkpoint_sha256"]
+            record["parent_checkpoint_sha256"] = "wrong"
+            self.assertFalse(deployment_finetune_lineage_valid(training, saved))
+            record["parent_checkpoint_sha256"] = original
+        training["initial_weights_match_parent"] = False
+        self.assertFalse(deployment_finetune_lineage_valid(training, saved))
 
     def test_training_entrypoint_enforces_frozen_scale(self):
         source = (ROOT / "scripts/beam_experiment.py").read_text()

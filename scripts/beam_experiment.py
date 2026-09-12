@@ -25,6 +25,8 @@ parser.add_argument("--iterations", type=int, default=1800)
 parser.add_argument("--seed", type=int)
 parser.add_argument("--split", choices=["validation", "test"], default="validation")
 parser.add_argument("--checkpoint", type=Path)
+parser.add_argument("--initialize_from", type=Path,
+                    help="Initialize deployment DR from the selected trained seed-2 policy")
 parser.add_argument("--output", type=Path, default=ROOT / "results/ppo_flat")
 parser.add_argument("--steps", type=int, default=200)
 parser.add_argument("--stance_start_probability", type=float, default=.10)
@@ -41,6 +43,13 @@ parser.add_argument("--period", type=float, default=.48, help="Evaluation period
 parser.add_argument("--speed", type=float, default=.30, help="Fixed evaluation speed, 0.25-0.40 m/s")
 parser.add_argument("--step_widths", type=float, nargs="+", default=[.10, .20, .30, .40, .50],
                     help="Full left-right foot separations for flat-ground evaluation")
+parser.add_argument("--min_step_width", type=float, default=None,
+                    help="Narrow-beam extension: sample training widths down to this value "
+                         "(observation normalization unchanged). Frozen protocol: 0.10")
+parser.add_argument("--width_tolerance", type=float, default=None,
+                    help="Sigma (m) of the per-foot lateral placement reward. Frozen protocol: 0.10")
+parser.add_argument("--lateral_heading_gain", type=float, default=0.0,
+                    help="Add gain * lateral course offset (rad/m) to the heading observation")
 AppLauncher.add_app_launcher_args(parser)
 args = parser.parse_args()
 if args.dfs is None:
@@ -52,8 +61,12 @@ if args.mode == "benchmark" and args.iterations == 1800:
 if args.deployment_dr and args.mode == "evaluate":
     parser.error("Use scripts/evaluate_policy.py for deployment robustness evaluation")
 if args.deployment_dr and args.checkpoint is not None:
-    parser.error("The first deployment-DR policy must be trained from scratch")
+    parser.error("Use --initialize_from for deployment fine-tuning")
+if args.initialize_from and (not args.deployment_dr or args.mode != "train"):
+    parser.error("--initialize_from requires deployment DR training")
 if args.deployment_dr and args.mode == "train":
+    if args.initialize_from is None:
+        parser.error("Deployment DR requires --initialize_from with the trained seed-2 policy")
     if args.num_envs != TRAINING_NUM_ENVS:
         parser.error(
             f"Deployment training requires exactly {TRAINING_NUM_ENVS} environments")
@@ -68,8 +81,15 @@ if args.deployment_dr and args.mode == "train":
 period_ticks = round(args.period / CONTROL_DT)
 if period_ticks not in PERIOD_TICKS or abs(period_ticks * CONTROL_DT - args.period) > 1e-6:
     parser.error("Period must be 0.36-0.54 s in 0.02 s increments")
-if any(not .10 <= width <= .50 for width in args.step_widths):
-    parser.error("Step width must be between 0.10 and 0.50 m")
+if args.min_step_width is not None and not .04 <= args.min_step_width < .10:
+    parser.error("--min_step_width must be in [0.04, 0.10)")
+if args.width_tolerance is not None and not .01 <= args.width_tolerance <= .10:
+    parser.error("--width_tolerance must be in [0.01, 0.10] m")
+if args.lateral_heading_gain < 0 or args.lateral_heading_gain > 5:
+    parser.error("--lateral_heading_gain must be in [0, 5] rad/m")
+narrow_eval_min = .10 if args.min_step_width is None else args.min_step_width
+if any(not narrow_eval_min <= width <= .50 for width in args.step_widths):
+    parser.error(f"Step width must be between {narrow_eval_min:.2f} and 0.50 m")
 if not .25 <= args.speed <= .40:
     parser.error("Evaluation speed must be between 0.25 and 0.40 m/s")
 if any(df < .5 or df > min(.75, 1 - MIN_SWING_STEPS / period_ticks) + 1e-7 for df in args.dfs):
@@ -91,6 +111,16 @@ elif not 0 <= args.seed < 10000:
     parser.error("Training/smoke seeds must be in [0,10000)")
 if args.output.exists() and any(args.output.iterdir()):
     parser.error("Output directory is not empty; use a fresh directory to preserve provenance")
+if args.initialize_from:
+    import hashlib as _hashlib
+    from beam_walking.experiment.deployment import deployment_parent_metadata
+    _task_hash = _hashlib.sha256(b"".join(
+        (ROOT / "source/beam_walking/beam_walking/experiment" / name).read_bytes()
+        for name in ("task.py", "protocol.py"))).hexdigest()
+    _narrow = (args.min_step_width is not None or args.width_tolerance is not None
+               or args.lateral_heading_gain != 0.0)
+    deployment_parent_metadata(args.initialize_from, _task_hash,
+                               allow_task_change=_narrow)
 from gpu_capacity import check_capacity
 capacity = check_capacity(args.mode, args.num_envs, args.device or "cuda:0", args.video)
 if args.video:
@@ -112,9 +142,10 @@ from rsl_rl.runners import OnPolicyRunner
 from isaaclab_rl.rsl_rl import RslRlVecEnvWrapper
 from isaaclab.utils.io import dump_yaml
 from beam_walking.experiment.task import BeamEnv, BeamEnvCfg, BeamPPORunnerCfg, command
+from beam_walking.experiment import protocol, task
 from beam_walking.experiment.deployment import (
     deployment_profile, deployment_profile_sha256,
-    deployment_training_source_hash,
+    deployment_training_source_hash, initialize_deployment_policy,
 )
 from beam_walking.experiment.deployment_task import (
     DeploymentBeamEnv, DeploymentBeamEnvCfg, DeploymentBeamPPORunnerCfg,
@@ -136,6 +167,13 @@ def main():
         if source.exists():
             shutil.copy2(source, snapshot / filename)
     (args.output / "capacity.json").write_text(json.dumps(capacity, indent=2))
+    # Narrow-beam extension knobs. Set before any environment or command term
+    # is built; recorded in provenance below.
+    if args.min_step_width is not None:
+        protocol.NARROW_WIDTH_MIN = args.min_step_width
+    if args.width_tolerance is not None:
+        protocol.WIDTH_SCORE_VARIANCE = args.width_tolerance ** 2
+    task.LATERAL_HEADING_GAIN = args.lateral_heading_gain
     cfg = DeploymentBeamEnvCfg() if args.deployment_dr else BeamEnvCfg()
     cfg.scene.num_envs = args.num_envs
     cfg.seed = args.seed
@@ -185,14 +223,20 @@ def main():
         "checkpoint_selection_rule": "final_requested_iteration",
         "watcher_enabled": bool(args.mode == "train" and not args.no_watcher),
         "deployment_domain_randomization": bool(args.deployment_dr),
-        "deployment_profile": deployment_profile() if args.deployment_dr else None}
+        "deployment_profile": deployment_profile() if args.deployment_dr else None,
+        "narrow_beam_extension": {
+            "min_step_width": args.min_step_width,
+            "width_tolerance_sigma_m": args.width_tolerance,
+            "lateral_heading_gain_rad_per_m": args.lateral_heading_gain,
+            "observation_normalization_range": list(protocol.STEP_WIDTH_RANGE)}}
     if args.deployment_dr:
         metadata["base_training_source_sha256"] = metadata["training_source_sha256"]
         metadata["training_source_sha256"] = deployment_training_source_hash(
             ROOT, metadata["base_training_source_sha256"])
         metadata["deployment_profile_sha256"] = deployment_profile_sha256()
     metadata["fresh_training"] = bool(
-        args.mode == "train" and args.checkpoint is None)
+        args.mode == "train" and args.checkpoint is None
+        and args.initialize_from is None)
     metadata["training_lineage_id"] = (
         hashlib.sha256(
             f"{metadata['training_source_sha256']}:{args.seed}:fresh_v1".encode()
@@ -325,6 +369,30 @@ def main():
         print("SMOKE_OK", obs["policy"].shape, "feet", command(env).feet, flush=True)
     else:
         runner = OnPolicyRunner(wrapped, agent.to_dict(), log_dir=str(args.output), device=env.device)
+        if args.initialize_from:
+            initialization = initialize_deployment_policy(
+                runner, args.initialize_from, metadata["task_sha256"],
+                allow_task_change=_narrow)
+            metadata.update(initialization)
+            metadata["training_lineage_id"] = hashlib.sha256(
+                f"{metadata['training_source_sha256']}:{args.seed}:"
+                f"{metadata['parent_checkpoint_sha256']}:finetune_v1".encode()
+            ).hexdigest()
+            # Continue the parent's fully developed command distribution.
+            env.common_step_counter = initialization["parent_common_step_counter"]
+            wrapped.reset()
+            (args.output / "provenance.json").write_text(json.dumps(metadata, indent=2))
+            shutil.copy2(args.initialize_from.parent / "provenance.json",
+                         args.output / "parent_provenance.json")
+            # RSL-RL initializes logger_type inside learn(); archive explicitly
+            # before learn so no logging initialization is needed for this proof.
+            torch.save({
+                "model_state_dict": runner.alg.policy.state_dict(),
+                "optimizer_state_dict": runner.alg.optimizer.state_dict(),
+                "iter": runner.current_learning_iteration,
+                "infos": {**initialization, "task_sha256": metadata["task_sha256"]},
+            }, args.output / "initialized_from_seed2.pt")
+            print("DEPLOYMENT_PARENT_LOADED", json.dumps(initialization), flush=True)
         if args.checkpoint:
             saved_info = runner.load(
                 str(args.checkpoint),
@@ -346,6 +414,8 @@ def main():
             original_save = runner.save
             def save_with_progress(path, infos=None):
                 original_save(path, {"common_step_counter": env.common_step_counter,
+                    "training_kind": metadata.get("training_kind", "fresh"),
+                    "parent_checkpoint_sha256": metadata.get("parent_checkpoint_sha256"),
                     "task_sha256": metadata["task_sha256"],
                     "training_source_sha256": metadata["training_source_sha256"],
                     "deployment_profile_schema": (

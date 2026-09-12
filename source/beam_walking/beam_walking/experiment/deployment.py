@@ -100,3 +100,81 @@ def deployment_training_source_hash(root, base_training_hash):
     for relative in DEPLOYMENT_SOURCE_PATHS:
         digest.update((root / relative).read_bytes())
     return digest.hexdigest()
+
+
+# Explicit user-selected parent, distinct from the RNG seed for DR sampling.
+DEPLOYMENT_PARENT_SHA256 = "ef5dae663b9650a3197e589b406101d4a450282e1e358c2af895d0505912127a"
+
+
+def deployment_parent_metadata(checkpoint, task_sha256, allow_task_change=False):
+    """Verify the selected trained seed-2 policy before initializing DR.
+
+    ``allow_task_change`` is for the opt-in narrow-beam extension: the parent
+    must still be the pinned seed-2 checkpoint with an internally consistent
+    provenance, but the current task hash may differ from the parent's. Both
+    hashes are recorded so the lineage stays auditable.
+    """
+    import torch
+    checkpoint = Path(checkpoint).resolve()
+    checkpoint_bytes = checkpoint.read_bytes()
+    digest = hashlib.sha256(checkpoint_bytes).hexdigest()
+    if digest != DEPLOYMENT_PARENT_SHA256:
+        raise ValueError("Deployment fine-tuning requires the selected seed-2 model_1799 checkpoint")
+    provenance_path = checkpoint.parent / "provenance.json"
+    provenance_bytes = provenance_path.read_bytes()
+    parent = json.loads(provenance_bytes)
+    state = torch.load(checkpoint, map_location="cpu", weights_only=False)
+    info = state.get("infos") or {}
+    parent_task = parent.get("task_sha256")
+    task_matches = (parent_task == task_sha256 and info.get("task_sha256") == task_sha256)
+    task_consistent = parent_task is not None and info.get("task_sha256") == parent_task
+    if (parent.get("seed") != 2 or parent.get("fresh_training") is not True
+            or state.get("iter") != 1799
+            or not (task_matches or (allow_task_change and task_consistent))):
+        raise ValueError("Seed-2 parent task/provenance mismatch")
+    return {
+        "training_kind": "deployment_finetune",
+        "parent_task_sha256": parent_task,
+        "current_task_sha256": task_sha256,
+        "task_changed_from_parent": not task_matches,
+        "parent_checkpoint": str(checkpoint),
+        "parent_checkpoint_sha256": digest,
+        "parent_checkpoint_iteration": state["iter"],
+        "parent_training_seed": parent["seed"],
+        "parent_provenance_sha256": hashlib.sha256(provenance_bytes).hexdigest(),
+        "parent_common_step_counter": info["common_step_counter"],
+        "optimizer_initialization": "fresh_for_dr",
+        "updates_counted_from": "start_of_dr_finetuning",
+    }
+
+
+def initialize_deployment_policy(runner, checkpoint, task_sha256,
+                                 allow_task_change=False):
+    """Load all parent weights exactly, preserving a fresh optimizer and DR counter."""
+    import torch
+    metadata = deployment_parent_metadata(checkpoint, task_sha256,
+                                          allow_task_change=allow_task_change)
+    state = torch.load(checkpoint, map_location="cpu", weights_only=False)
+    policy = runner.alg.policy
+    policy.load_state_dict(state["model_state_dict"], strict=True)
+    for key, value in policy.state_dict().items():
+        if not torch.equal(value.detach().cpu(), state["model_state_dict"][key]):
+            raise RuntimeError(f"Seed-2 initialization weight mismatch: {key}")
+    if runner.alg.optimizer.state:
+        raise RuntimeError("DR initialization requires a fresh optimizer")
+    runner.current_learning_iteration = 0
+    metadata["initial_weights_match_parent"] = True
+    return metadata
+
+
+def deployment_finetune_lineage_valid(training, saved):
+    """Require checkpoint-bound parent identity for deployment fine-tune evaluation."""
+    return bool(
+        training.get("training_kind") == "deployment_finetune"
+        and training.get("fresh_training") is False
+        and training.get("parent_checkpoint_sha256") == DEPLOYMENT_PARENT_SHA256
+        and training.get("parent_training_seed") == 2
+        and training.get("parent_checkpoint_iteration") == 1799
+        and training.get("initial_weights_match_parent") is True
+        and saved.get("parent_checkpoint_sha256") == DEPLOYMENT_PARENT_SHA256
+        and saved.get("training_kind") == "deployment_finetune")

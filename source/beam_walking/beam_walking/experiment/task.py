@@ -26,6 +26,12 @@ from .protocol import (PERIOD, CYCLE_STEPS, PERIOD_TICKS,
 LEG_NAMES = ["FL_foot", "FR_foot", "RL_foot", "RR_foot"]
 TOP = 0.0
 LENGTH = 3.0
+# Opt-in (beam_experiment.py --lateral_heading_gain): add gain * lateral offset
+# from the course line (env-frame y, +left) to the heading observation. The
+# policy already steers heading to zero, so this makes it steer back onto the
+# line without a new input. quad-sdk's beamwalking controller applies the same
+# term (beamwalking.lateral_heading_gain) at deployment.
+LATERAL_HEADING_GAIN = 0.0
 
 
 @clone
@@ -192,7 +198,14 @@ def gait_obs(env):
     return torch.cat([torch.sin(2 * math.pi * observed_phase),
                       torch.cos(2 * math.pi * observed_phase),
                       normalized_gait_command(c.values), c.desired.float(),
-                      heading_error(env).unsqueeze(-1)], dim=-1)
+                      heading_observation(env).unsqueeze(-1)], dim=-1)
+
+
+def heading_observation(env):
+    heading = heading_error(env)
+    if LATERAL_HEADING_GAIN:
+        heading = heading + LATERAL_HEADING_GAIN * local_body(env)[:, 1]
+    return heading
 
 
 def heading_error(env):

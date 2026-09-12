@@ -100,6 +100,7 @@ from beam_walking.experiment.deployment import (
     STANCE_START_PROBABILITY, TRAINING_ITERATIONS, TRAINING_NUM_ENVS,
     deployment_profile, deployment_profile_sha256,
     deployment_training_source_hash, validate_gain_scales,
+    deployment_finetune_lineage_valid,
 )
 from beam_walking.experiment.deployment_task import (
     DeploymentBeamEnv, DeploymentBeamEnvCfg, motor_gain_event,
@@ -488,12 +489,14 @@ def main():
         (args.output / "training_provenance.json").write_bytes(training_bytes)
         if (
             training.get("task_sha256") != task_hash
-            or training.get("fresh_training") is not True
+            or not (training.get("fresh_training") is True
+                    or (deployment_training_verified
+                        and deployment_finetune_lineage_valid(training, saved)))
             or training.get("checkpoint_selection_rule") != "final_requested_iteration"
             or runner.current_learning_iteration
                 != training.get("training_iterations_requested", 0) - 1
         ):
-            raise ValueError("Evaluation requires the final checkpoint from a fresh run")
+            raise ValueError("Evaluation requires the final checkpoint with verified training lineage")
         if deployment_training_verified and (
                 saved.get("deployment_profile_schema")
                     != expected_profile["schema"]
