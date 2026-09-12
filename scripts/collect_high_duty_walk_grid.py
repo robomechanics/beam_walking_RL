@@ -1,4 +1,4 @@
-"""Collect the fixed flat-ground DF grid used to train the duty selector."""
+"""Collect and validate the fixed high-duty walk selector grid."""
 
 import argparse
 import csv
@@ -16,23 +16,25 @@ faulthandler.enable()
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "source/beam_walking"))
 
-from beam_walking.experiment.adaptive_duty import (  # noqa: E402
-    ADAPTIVE_DUTY_LEVELS,
-    ADAPTIVE_TRAINING_ITERATIONS,
-    ADAPTIVE_TRAINING_NUM_ENVS,
-    ADAPTIVE_TASK_FILES,
-    ADAPTIVE_TRAINING_SOURCE_FILES,
-    adaptive_lineage_id,
-    feasible_duty_upper,
+from beam_walking.experiment.high_duty_walk import (  # noqa: E402
+    HIGH_DUTY_WALK_LEVELS,
+    HIGH_DUTY_WALK_GRID_SEED,
+    HIGH_DUTY_WALK_PERIOD,
+    HIGH_DUTY_WALK_TRAINING_ITERATIONS,
+    HIGH_DUTY_WALK_TRAINING_NUM_ENVS,
+    HIGH_DUTY_WALK_TRAINING_SEED,
+    HIGH_DUTY_WALK_VALIDATION_SEED,
+    HIGH_DUTY_WALK_TASK_FILES,
+    HIGH_DUTY_WALK_TRAINING_SOURCE_FILES,
+    high_duty_walk_lineage_id,
     files_sha256,
 )
 from beam_walking.experiment.protocol import (  # noqa: E402
     CONTROL_DT,
     GAITS,
-    PERIOD_TICKS,
     leg_phase,
 )
-from beam_walking.experiment.duty_selector import (  # noqa: E402
+from beam_walking.experiment.high_duty_walk_selector import (  # noqa: E402
     load_selector,
     predict_supported_rows,
 )
@@ -53,11 +55,11 @@ parser.add_argument("--measurement_cycles", type=int, default=4)
 parser.add_argument("--step_widths", type=float, nargs="+",
                     default=[.10, .20, .30, .40, .50])
 parser.add_argument("--dfs", type=float, nargs="+",
-                    default=list(ADAPTIVE_DUTY_LEVELS))
+                    default=list(HIGH_DUTY_WALK_LEVELS))
 parser.add_argument("--speeds", type=float, nargs="+",
                     default=[.25, .30, .35, .40])
 parser.add_argument("--periods", type=float, nargs="+", default=[.48])
-parser.add_argument("--gaits", choices=GAITS, nargs="+", default=list(GAITS))
+parser.add_argument("--gaits", choices=("walk",), nargs="+", default=["walk"])
 parser.add_argument("--seed", type=int)
 parser.add_argument("--stance_start_probability", type=float, default=.10)
 AppLauncher.add_app_launcher_args(parser)
@@ -72,17 +74,22 @@ if args.smoke and args.selector_checkpoint:
 if args.selector_checkpoint and args.exploratory:
     parser.error("Exploratory selectors cannot be promoted by validation")
 if args.seed is None:
-    args.seed = (2_900_000 if args.smoke else
-                 (4_000_000 if args.selector_checkpoint else 3_000_000))
+    args.seed = (HIGH_DUTY_WALK_GRID_SEED - 100_000 if args.smoke else
+                 (HIGH_DUTY_WALK_VALIDATION_SEED
+                  if args.selector_checkpoint else HIGH_DUTY_WALK_GRID_SEED))
 if args.output.exists() and any(args.output.iterdir()):
     parser.error("Output directory must be new or empty")
 if args.num_envs < 8:
     parser.error("Use at least eight held-out trials per candidate")
 if args.measurement_cycles < 2 or args.settle_cycles < args.measurement_cycles:
     parser.error("Settling must include at least two measured cycles")
-seed_range = ((2_900_000, 3_000_000) if args.smoke else
-              ((4_000_000, 5_000_000) if args.selector_checkpoint
-               else (3_000_000, 4_000_000)))
+seed_range = ((HIGH_DUTY_WALK_GRID_SEED - 100_000,
+               HIGH_DUTY_WALK_GRID_SEED) if args.smoke else
+              ((HIGH_DUTY_WALK_VALIDATION_SEED,
+                HIGH_DUTY_WALK_VALIDATION_SEED + 1_000_000)
+               if args.selector_checkpoint else
+               (HIGH_DUTY_WALK_GRID_SEED,
+                HIGH_DUTY_WALK_GRID_SEED + 1_000_000)))
 if args.seed < seed_range[0] or args.seed + args.num_envs > seed_range[1]:
     parser.error(f"Evaluation seeds must stay in [{seed_range[0]}, {seed_range[1]})")
 if not 0 <= args.stance_start_probability <= 1:
@@ -94,15 +101,16 @@ if not args.smoke and not args.exploratory:
         parser.error(
             "Primary grid/validation requires 32 trials, 12 settle cycles, "
             "4 measured cycles, and 0.10 grounded-start probability")
-    expected_seed = 4_000_000 if args.selector_checkpoint else 3_000_000
+    expected_seed = (HIGH_DUTY_WALK_VALIDATION_SEED
+                     if args.selector_checkpoint else HIGH_DUTY_WALK_GRID_SEED)
     if args.seed != expected_seed:
         parser.error(f"Primary mode requires seed start {expected_seed}")
     if not args.selector_checkpoint and (
             args.step_widths != [.10, .20, .30, .40, .50]
-            or args.dfs != list(ADAPTIVE_DUTY_LEVELS)
+            or args.dfs != list(HIGH_DUTY_WALK_LEVELS)
             or args.speeds != [.25, .30, .35, .40]
-            or args.periods != [.48]
-            or args.gaits != list(GAITS)):
+            or args.periods != [HIGH_DUTY_WALK_PERIOD]
+            or args.gaits != ["walk"]):
         parser.error("Primary grid factor levels are fixed; use --exploratory")
 for values, label in ((args.step_widths, "width"), (args.dfs, "DF"),
                       (args.speeds, "speed"), (args.periods, "period"),
@@ -113,13 +121,15 @@ if any(not .10 <= value <= .50 for value in args.step_widths):
     parser.error("Step widths must be in [0.10, 0.50] m")
 if any(not .25 <= value <= .40 for value in args.speeds):
     parser.error("Speeds must be in [0.25, 0.40] m/s")
-if any(not .50 <= value <= .75 for value in args.dfs):
-    parser.error("Duty factors must be in [0.50, 0.75]")
+if any(not HIGH_DUTY_WALK_LEVELS[0] <= value <= HIGH_DUTY_WALK_LEVELS[-1]
+       for value in args.dfs):
+    parser.error("Duty factors must be in [0.75, 0.90]")
 period_ticks = {}
 for period in args.periods:
     ticks = round(period / CONTROL_DT)
-    if ticks not in PERIOD_TICKS or not np.isclose(ticks * CONTROL_DT, period):
-        parser.error("Periods must be 0.36--0.54 s in 0.02 s increments")
+    if (not np.isclose(period, HIGH_DUTY_WALK_PERIOD)
+            or not np.isclose(ticks * CONTROL_DT, period)):
+        parser.error("High-duty walk uses the fixed 0.48 s period")
     period_ticks[period] = ticks
 selector_model = selector_payload = None
 if args.selector_checkpoint:
@@ -131,8 +141,8 @@ if args.selector_checkpoint:
         selector_model, selector_payload, contexts,
         require_deployment_ready=False)
     conditions = [
-        (row["gait"], row["speed"], row["period"], row["step_width"],
-         row["selected_df"])
+        ("walk", row["speed"], HIGH_DUTY_WALK_PERIOD,
+         row["step_width"], row["selected_df"])
         for row in predictions
     ]
 else:
@@ -143,19 +153,13 @@ else:
         for period in args.periods
         for width in args.step_widths
         for duty in args.dfs
-        if duty <= feasible_duty_upper(period_ticks[period]) + 1e-7
     ]
 if args.smoke:
-    conditions = [("trot", .30, .48, .30, .60)]
+    conditions = [("walk", .30, HIGH_DUTY_WALK_PERIOD, .30, .75)]
 if not conditions:
     parser.error("No feasible grid conditions were requested")
 
 from evaluation_capacity import check_evaluation_capacity  # noqa: E402
-from plot_duty_validation import (  # noqa: E402
-    plot_validation_summaries,
-    summarize_validation_rows,
-)
-
 capacity = check_evaluation_capacity(
     args.num_envs, args.device or "cuda:0", False)
 app = AppLauncher(args).app
@@ -171,23 +175,23 @@ from isaaclab.utils import configclass  # noqa: E402
 from isaaclab_rl.rsl_rl import RslRlVecEnvWrapper  # noqa: E402
 from rsl_rl.runners import OnPolicyRunner  # noqa: E402
 
-from beam_walking.experiment.adaptive_task import (  # noqa: E402
-    AdaptiveBeamEnv,
-    AdaptiveBeamEnvCfg,
-    AdaptiveBeamPPORunnerCfg,
+from beam_walking.experiment.high_duty_walk_task import (  # noqa: E402
+    HighDutyWalkEnv,
+    HighDutyWalkEnvCfg,
+    HighDutyWalkPPORunnerCfg,
 )
 from beam_walking.experiment.duty_grid import summarize_condition  # noqa: E402
 from beam_walking.experiment.task import command  # noqa: E402
 
-SNAPSHOT_FILES = ADAPTIVE_TASK_FILES + (
+SNAPSHOT_FILES = HIGH_DUTY_WALK_TASK_FILES + (
     "source/beam_walking/beam_walking/experiment/duty_grid.py",
     "source/beam_walking/beam_walking/experiment/duty_selector.py",
+    "source/beam_walking/beam_walking/experiment/high_duty_walk_selector.py",
     "source/beam_walking/beam_walking/experiment/analysis.py",
     "source/beam_walking/beam_walking/experiment/stability.py",
-    "scripts/collect_duty_grid.py",
-    "scripts/fit_duty_selector.py",
-    "scripts/plot_duty_validation.py",
-    "scripts/select_duty_factor.py",
+    "scripts/collect_high_duty_walk_grid.py",
+    "scripts/fit_high_duty_walk_selector.py",
+    "scripts/select_high_duty_walk.py",
     "scripts/evaluation_capacity.py",
     "scripts/gpu_capacity.py",
 )
@@ -274,10 +278,64 @@ def snapshot_sources(output):
 
 
 def write_validation_graph(rows, output):
-    """Plot achieved DF from fresh held-out selector rollouts."""
-    summaries = summarize_validation_rows(rows)
+    """Plot one achieved-duty curve per speed with a single legend entry."""
+    import matplotlib.pyplot as plt
+
+    grouped = {}
+    for row in rows:
+        key = (row["speed"], row["step_width"], row["command_df"])
+        grouped.setdefault(key, []).append(row)
+    summaries = []
+    for key, trials in sorted(grouped.items()):
+        achieved = np.asarray([row["achieved_df"] for row in trials])
+        summaries.append({
+            "gait": "walk", "speed": key[0],
+            "period": HIGH_DUTY_WALK_PERIOD, "step_width": key[1],
+            "selected_df": key[2],
+            "achieved_df_median": float(np.median(achieved)),
+            "achieved_df_q025": float(np.quantile(achieved, .025)),
+            "achieved_df_q975": float(np.quantile(achieved, .975)),
+            "compliance_rate": float(np.mean([
+                row["compliant"] for row in trials])),
+            "finite_energy_compliant_trials": int(sum(
+                row["compliant"] and np.isfinite(row["positive_mechanical_cot"])
+                for row in trials)),
+            "trials": len(trials),
+        })
     write_rows(output / "selector_validation_summary.csv", summaries)
-    plot_validation_summaries(summaries, output, list(GAITS))
+    colors = ("#0072B2", "#009E73", "#E69F00", "#CC79A7")
+    markers = ("o", "s", "^", "D")
+    fig, axis = plt.subplots(figsize=(7.4, 4.8))
+    for index, speed in enumerate(sorted({row["speed"] for row in summaries})):
+        group = sorted(
+            (row for row in summaries if row["speed"] == speed),
+            key=lambda row: row["step_width"])
+        width = np.asarray([row["step_width"] for row in group])
+        selected = np.asarray([row["selected_df"] for row in group])
+        achieved = np.asarray([row["achieved_df_median"] for row in group])
+        low = np.asarray([row["achieved_df_q025"] for row in group])
+        high = np.asarray([row["achieved_df_q975"] for row in group])
+        axis.plot(
+            width, selected, linestyle="--", marker=markers[index],
+            markerfacecolor="white", color=colors[index], linewidth=1.5,
+            markersize=7)
+        axis.errorbar(
+            width, achieved, yerr=np.vstack((achieved - low, high - achieved)),
+            fmt=f"{markers[index]}-", color=colors[index], capsize=3,
+            linewidth=2, markersize=6, label=f"{speed:.2f} m/s")
+    axis.set_xlabel("Commanded full step width (m)")
+    axis.set_ylabel("Achieved duty factor")
+    axis.set_ylim(.73, .93)
+    axis.set_yticks((*HIGH_DUTY_WALK_LEVELS, 22 / 24))
+    axis.grid(alpha=.25)
+    axis.legend(title="Commanded speed", frameon=False, ncol=2)
+    axis.set_title(
+        "High-duty walk validation, period 0.48 s\n"
+        "Dashed open markers: selected; solid filled markers: achieved")
+    fig.tight_layout()
+    fig.savefig(output / "selected_vs_achieved_duty_factor.png", dpi=180)
+    fig.savefig(output / "selected_vs_achieved_duty_factor.pdf")
+    plt.close(fig)
     return summaries
 
 
@@ -403,7 +461,7 @@ def main():
     snapshot_sources(args.output)
     (args.output / "capacity.json").write_text(json.dumps(capacity, indent=2))
 
-    cfg = AdaptiveBeamEnvCfg()
+    cfg = HighDutyWalkEnvCfg()
     cfg.scene.num_envs = args.num_envs
     cfg.seed = args.seed
     cfg.stance_start_probability = args.stance_start_probability
@@ -415,34 +473,34 @@ def main():
     cfg.terminations.crossing = None
     cfg.episode_length_s = 100.
     cfg.recorders = DutyGridRecorderCfg()
-    env = AdaptiveBeamEnv(cfg)
+    env = HighDutyWalkEnv(cfg)
     wrapped = None
     try:
         env.capture = True
         env.calibrate_stance()
         wrapped = RslRlVecEnvWrapper(env, clip_actions=5.)
-        agent = AdaptiveBeamPPORunnerCfg()
+        agent = HighDutyWalkPPORunnerCfg()
         agent.seed = args.seed
         agent.device = cfg.sim.device
         runner = OnPolicyRunner(
             wrapped, agent.to_dict(), log_dir=None, device=env.device)
         saved = runner.load(str(args.checkpoint), load_optimizer=False)
-        task_sha256 = files_sha256(ROOT, ADAPTIVE_TASK_FILES)
+        task_sha256 = files_sha256(ROOT, HIGH_DUTY_WALK_TASK_FILES)
         if not saved or saved.get("task_sha256") != task_sha256:
-            raise ValueError("Checkpoint does not match the adaptive-duty task")
+            raise ValueError("Checkpoint does not match the high-duty walk task")
         training_path = args.checkpoint.parent / "provenance.json"
         if not training_path.is_file():
-            raise ValueError("Adaptive training provenance is required")
+            raise ValueError("High-duty walk training provenance is required")
         training_bytes = training_path.read_bytes()
         training = json.loads(training_bytes)
         training_source_sha256 = files_sha256(
-            ROOT, ADAPTIVE_TRAINING_SOURCE_FILES)
-        expected_lineage = adaptive_lineage_id(
+            ROOT, HIGH_DUTY_WALK_TRAINING_SOURCE_FILES)
+        expected_lineage = high_duty_walk_lineage_id(
             training_source_sha256, training.get("seed", -1))
         expected_control_steps = (
             training.get("training_iterations_requested", 0)
             * agent.num_steps_per_env)
-        if (training.get("schema") != "adaptive_duty_training_v1"
+        if (training.get("schema") != "high_duty_walk_training_v1"
                 or training.get("mode") != "train"
                 or training.get("fresh_training") is not True
                 or training.get("primary_training_protocol") is not True
@@ -450,19 +508,20 @@ def main():
                 or training.get("training_source_sha256")
                     != training_source_sha256
                 or not isinstance(training.get("seed"), int)
-                or training.get("seed") != 3
+                or training.get("seed") != HIGH_DUTY_WALK_TRAINING_SEED
                 or training.get("training_lineage_id") != expected_lineage
                 or saved.get("training_lineage_id") != expected_lineage
                 or saved.get("common_step_counter") != expected_control_steps
                 or training.get("training_num_envs")
-                    != ADAPTIVE_TRAINING_NUM_ENVS
+                    != HIGH_DUTY_WALK_TRAINING_NUM_ENVS
                 or training.get("training_iterations_requested")
-                    != ADAPTIVE_TRAINING_ITERATIONS
+                    != HIGH_DUTY_WALK_TRAINING_ITERATIONS
                 or training.get("checkpoint_selection_rule")
                     != "final_requested_iteration"
                 or runner.current_learning_iteration
                     != training.get("training_iterations_requested", 0) - 1):
-            raise ValueError("Grid requires the final checkpoint of a fresh adaptive run")
+            raise ValueError(
+                "Grid requires the final checkpoint of the fresh high-duty walk run")
         policy = runner.get_inference_policy(device=env.device)
         checkpoint_sha256 = hashlib.sha256(args.checkpoint.read_bytes()).hexdigest()
         selector_sha256 = None
@@ -487,17 +546,21 @@ def main():
         reset_plan = torch.as_tensor(reset_plan_np, device=env.device)
         stance_starts = torch.as_tensor(
             stance_np, device=env.device, dtype=torch.bool)
-        prefix = "selector" if args.selector_checkpoint else "grid"
+        prefix = ("high_duty_walk_selector" if args.selector_checkpoint
+                  else "high_duty_walk_grid")
         manifest = {
             "schema": (
-                "adaptive_duty_grid_smoke_v1" if args.smoke else
-                ("adaptive_duty_selector_validation_v1"
+                "high_duty_walk_grid_smoke_v1" if args.smoke else
+                ("high_duty_walk_selector_validation_v1"
                  if args.selector_checkpoint else
-                 ("adaptive_duty_grid_exploratory_v1" if args.exploratory
-                  else "adaptive_duty_grid_v1"))),
+                 ("high_duty_walk_grid_exploratory_v1" if args.exploratory
+                  else "high_duty_walk_grid_v1"))),
             "scientific_scope": "flat_ground_commanded_step_width",
             "terrain": "flat_ground", "terrain_width_input": False,
             "objective": "minimum positive mechanical CoT among candidates passing compliance gates",
+            "gait": "walk",
+            "candidate_duty_factors": list(HIGH_DUTY_WALK_LEVELS),
+            "fixed_period_s": HIGH_DUTY_WALK_PERIOD,
             "command_gate_limits_source": "experiment.stability.FROZEN_GATE_LIMITS",
             "topology_definition": "schedule_centered_unique_circular_events_v1",
             "topology_minimum": .90,
@@ -576,7 +639,7 @@ def main():
             trial_path = args.output / "duty_grid_smoke_trials.csv"
             write_rows(trial_path, all_rows)
             record = completion_record(
-                "adaptive_duty_grid_smoke_complete_v1",
+                "high_duty_walk_grid_smoke_complete_v1",
                 args.output / manifest_name, trial_path,
                 [item["filename"] for item in manifest["conditions"]])
             (args.output / "DUTY_GRID_SMOKE_COMPLETE").write_text(
@@ -592,16 +655,18 @@ def main():
                         and row["compliance_rate"] >= .90
                         and row["finite_energy_compliant_trials"]
                             / row["trials"] >= .90
+                        and abs(row["achieved_df_median"]
+                                - row["selected_df"]) <= .05
                         for row in summaries))
             validation_record = completion_record(
-                "adaptive_duty_selector_validation_complete_v1",
+                "high_duty_walk_selector_validation_complete_v1",
                 args.output / manifest_name, trial_path,
                 [item["filename"] for item in manifest["conditions"]])
             completion_path = args.output / "SELECTOR_VALIDATION_COMPLETE"
             completion_path.write_text(json.dumps(validation_record, indent=2))
             validated = dict(selector_payload)
             validated.update({
-                "schema": "flat_duty_selector_v1",
+                "schema": "high_duty_walk_selector_v1",
                 "deployment_ready": deployment_ready,
                 "requires_fresh_rollout_validation": not deployment_ready,
                 "validation_manifest_sha256": hashlib.sha256(
@@ -615,7 +680,8 @@ def main():
                 "validation_trials_per_context": args.num_envs,
                 "validation_all_contexts_passed": deployment_ready,
             })
-            torch.save(validated, args.output / "validated_duty_selector.pt")
+            torch.save(
+                validated, args.output / "validated_high_duty_walk_selector.pt")
             print("SELECTOR_VALIDATION_COMPLETE", json.dumps({
                 "contexts": len(summaries),
                 "deployment_ready": deployment_ready,
@@ -624,8 +690,8 @@ def main():
             trial_path = args.output / "duty_grid_trials.csv"
             write_rows(trial_path, all_rows)
             record = completion_record(
-                ("adaptive_duty_grid_exploratory_complete_v1"
-                 if args.exploratory else "adaptive_duty_grid_complete_v1"),
+                ("high_duty_walk_grid_exploratory_complete_v1"
+                 if args.exploratory else "high_duty_walk_grid_complete_v1"),
                 args.output / manifest_name, trial_path,
                 [item["filename"] for item in manifest["conditions"]])
             (args.output / "GRID_COMPLETE").write_text(

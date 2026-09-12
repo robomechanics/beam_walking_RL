@@ -58,7 +58,10 @@ def _compute_processes(index):
     return processes
 
 
-def check_capacity(mode, num_envs, device="cuda:0", video=False):
+def check_capacity(mode, num_envs, device="cuda:0", video=False,
+                   allow_shared_gpu=False):
+    """``allow_shared_gpu`` skips only the foreign-process rule (explicit user
+    opt-in to run alongside another job); the memory checks still apply."""
     if not device.startswith("cuda"):
         raise RuntimeError(
             "This experiment requires the tested CUDA/Isaac Sim execution path")
@@ -110,9 +113,10 @@ def check_capacity(mode, num_envs, device="cuda:0", video=False):
         "rustdesk_exception_applied": bool(allowed),
         "rustdesk_process_limit_mib": RUSTDESK_PROCESS_LIMIT_MIB,
         "rustdesk_total_limit_mib": RUSTDESK_TOTAL_LIMIT_MIB,
+        "shared_gpu_allowed": bool(allow_shared_gpu),
     }
     print("GPU_CAPACITY", json.dumps(record), flush=True)
-    if blocked:
+    if blocked and not allow_shared_gpu:
         raise RuntimeError(
             "GPU has a compute process outside the narrow RustDesk exception; "
             f"no process was stopped: {blocked}")

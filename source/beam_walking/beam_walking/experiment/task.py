@@ -32,6 +32,18 @@ LENGTH = 3.0
 # line without a new input. quad-sdk's beamwalking controller applies the same
 # term (beamwalking.lateral_heading_gain) at deployment.
 LATERAL_HEADING_GAIN = 0.0
+# Opt-in (beam_experiment.py --heading_cost_weight): multiplier on the bounded
+# heading cost. At 1.0 a 4 degree yaw costs ~0.2 per step against ~20 of
+# reward, which lets a policy settle into a yawed crab-walk; 5.0 makes it ~1.
+HEADING_COST_WEIGHT = 1.0
+# Opt-in: apply the heading cost to the observed heading (yaw + gain * lateral
+# offset) instead of raw yaw, so yawing toward the course line is free and
+# only pointing away from it is penalized. Requires LATERAL_HEADING_GAIN.
+HEADING_COST_ON_OBSERVATION = False
+# Opt-in centering cost shape: cost = weight * .5 * (1 - exp(-(y/scale)^2)).
+# Frozen protocol: scale .25 m, weight 1 (a 5 cm offset costs ~0.02/step).
+CENTERING_SCALE = .25
+CENTERING_WEIGHT = 1.0
 
 
 @clone
@@ -271,8 +283,10 @@ def task_reward(env):
     height = torch.exp(-(p[:, 2] - TOP - .32).square() / .0025)
     # Drift is unobserved absolute state. Bound its cost so long episodes do not
     # become worse than deliberately terminating early after a lateral excursion.
-    centering_cost = .5 * (1 - torch.exp(-(p[:, 1] / .25).square()))
-    heading_cost = heading_stabilization_cost(heading_error(env))
+    centering_cost = CENTERING_WEIGHT * .5 * (
+        1 - torch.exp(-(p[:, 1] / CENTERING_SCALE).square()))
+    heading_cost = HEADING_COST_WEIGHT * heading_stabilization_cost(
+        heading_observation(env) if HEADING_COST_ON_OBSERVATION else heading_error(env))
     velocity_cost = straight_motion_cost(robot.data.root_ang_vel_b[:, 2])
     # These instantaneous batch metrics help watchers diagnose progress. They do
     # not replace complete-cycle, held-out command-compliance evaluation.

@@ -27,6 +27,9 @@ parser.add_argument("--seed", type=int, default=10000)
 parser.add_argument("--split", choices=("validation", "test"), default="validation")
 parser.add_argument("--stance_start_probability", type=float, default=.10)
 parser.add_argument("--video", action="store_true")
+parser.add_argument("--capture_joints", action="store_true",
+                    help="Also archive per-step policy observations/actions, joint states, "
+                         "applied torques and per-foot contact force vectors (sim2sim debugging)")
 parser.add_argument("--camera_env", type=int, default=0)
 parser.add_argument("--dfs", type=float, nargs="+")
 parser.add_argument("--gait", choices=GAITS, default="trot")
@@ -58,8 +61,20 @@ if not 0 <= args.stance_start_probability <= 1:
 ticks = round(args.period / CONTROL_DT)
 if ticks not in PERIOD_TICKS or not np.isclose(ticks * CONTROL_DT, args.period):
     parser.error("Period must be 0.36-0.54 s in 0.02 s increments")
-if any(not .10 <= width <= .50 for width in args.step_widths):
-    parser.error("Step width must be in [0.10,0.50] m")
+# Narrow-beam extension: a checkpoint trained with --min_step_width (and the
+# matching placement tolerance / lateral heading term) records those settings
+# in its provenance. Apply them so evaluation observations match training and
+# the width grid may extend below 0.10 m.
+import json as _json
+_narrow = {}
+try:
+    _narrow = _json.loads((args.checkpoint.resolve().parent / "provenance.json").read_text()
+                          ).get("narrow_beam_extension") or {}
+except (OSError, ValueError):
+    _narrow = {}
+_min_width = _narrow.get("min_step_width") or .10
+if any(not _min_width - 1e-9 <= width <= .50 for width in args.step_widths):
+    parser.error(f"Step width must be in [{_min_width:.2f},0.50] m")
 if not .25 <= args.speed <= .40:
     parser.error("Speed must be in [0.25,0.40] m/s")
 if any(df < .50 or df > min(.75, 1 - MIN_SWING_STEPS / ticks) + 1e-7 for df in args.dfs):
@@ -280,7 +295,12 @@ def evaluate(env, wrapped, policy, provenance):
             traces = {}
             try:
                 for step in range(env.max_episode_length):
-                    obs, _, done, _ = wrapped.step(policy(obs))
+                    action = policy(obs)
+                    if args.capture_joints:
+                        # Observation the policy just acted on and its raw action.
+                        obs_tensor = obs["policy"] if not torch.is_tensor(obs) else obs
+                        pre = {"policy_obs": obs_tensor.clone(), "policy_action": action.clone()}
+                    obs, _, done, _ = wrapped.step(action)
                     done = done.bool()
                     force_history = force_recorder.post_step_history(done)
                     if not torch.equal(force_history[:, -1] > 5., env.transition["contacts"]):
@@ -292,6 +312,19 @@ def evaluate(env, wrapped, policy, provenance):
                         "foot_force_norm_200hz": force_history,
                         "terminal_force_preserved": (active & done).clone(),
                     }
+                    if args.capture_joints:
+                        robot = env.scene["robot"]
+                        gait = command(env)
+                        record.update(pre)
+                        record["joint_pos"] = robot.data.joint_pos.clone()
+                        record["joint_vel"] = robot.data.joint_vel.clone()
+                        record["joint_pos_target"] = robot.data.joint_pos_target.clone()
+                        record["applied_torque"] = robot.data.applied_torque.clone()
+                        record["foot_force_w"] = env.scene["contact_forces"].data.net_forces_w[
+                            :, gait.sensor_feet].clone()
+                        record["root_lin_vel_b"] = robot.data.root_lin_vel_b.clone()
+                        record["root_ang_vel_b"] = robot.data.root_ang_vel_b.clone()
+                        record["projected_gravity_b"] = robot.data.projected_gravity_b.clone()
                     for key, value in record.items():
                         traces.setdefault(key, []).append(value.cpu().numpy())
                     if args.video and include_post_step_video_frame(
@@ -421,6 +454,16 @@ def main():
         shutil.copy2(source, snapshot / source.name)
     (args.output / "capacity.json").write_text(json.dumps(capacity, indent=2))
 
+    from beam_walking.experiment import protocol as _protocol, task as _task
+    if _narrow.get("min_step_width"):
+        _protocol.NARROW_WIDTH_MIN = float(_narrow["min_step_width"])
+    if _narrow.get("width_tolerance_sigma_m"):
+        _protocol.WIDTH_SCORE_VARIANCE = float(_narrow["width_tolerance_sigma_m"]) ** 2
+    _task.LATERAL_HEADING_GAIN = float(_narrow.get("lateral_heading_gain_rad_per_m") or 0.0)
+    _task.HEADING_COST_WEIGHT = float(_narrow.get("heading_cost_weight") or 1.0)
+    _task.HEADING_COST_ON_OBSERVATION = bool(_narrow.get("heading_cost_on_observation", False))
+    _task.CENTERING_SCALE = float(_narrow.get("centering_scale_m") or 0.25)
+    _task.CENTERING_WEIGHT = float(_narrow.get("centering_weight") or 1.0)
     cfg = (BeamEnvCfg() if args.deployment_profile == "nominal"
            else DeploymentBeamEnvCfg())
     cfg.scene.num_envs = args.num_envs

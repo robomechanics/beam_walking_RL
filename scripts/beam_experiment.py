@@ -50,6 +50,16 @@ parser.add_argument("--width_tolerance", type=float, default=None,
                     help="Sigma (m) of the per-foot lateral placement reward. Frozen protocol: 0.10")
 parser.add_argument("--lateral_heading_gain", type=float, default=0.0,
                     help="Add gain * lateral course offset (rad/m) to the heading observation")
+parser.add_argument("--allow_shared_gpu", action="store_true",
+                    help="Launch even if another CUDA process is running (memory checks still apply)")
+parser.add_argument("--heading_cost_weight", type=float, default=1.0,
+                    help="Multiplier on the heading stabilization cost. Frozen protocol: 1.0")
+parser.add_argument("--heading_cost_on_observation", action="store_true",
+                    help="Penalize the observed heading (yaw + lateral term) instead of raw yaw")
+parser.add_argument("--centering_scale", type=float, default=0.25,
+                    help="Lateral centering cost scale in metres. Frozen protocol: 0.25")
+parser.add_argument("--centering_weight", type=float, default=1.0,
+                    help="Multiplier on the lateral centering cost. Frozen protocol: 1.0")
 AppLauncher.add_app_launcher_args(parser)
 args = parser.parse_args()
 if args.dfs is None:
@@ -87,6 +97,12 @@ if args.width_tolerance is not None and not .01 <= args.width_tolerance <= .10:
     parser.error("--width_tolerance must be in [0.01, 0.10] m")
 if args.lateral_heading_gain < 0 or args.lateral_heading_gain > 5:
     parser.error("--lateral_heading_gain must be in [0, 5] rad/m")
+if not 0.1 <= args.heading_cost_weight <= 20:
+    parser.error("--heading_cost_weight must be in [0.1, 20]")
+if args.heading_cost_on_observation and args.lateral_heading_gain == 0.0:
+    parser.error("--heading_cost_on_observation requires --lateral_heading_gain")
+if not 0.02 <= args.centering_scale <= 1.0 or not 0.1 <= args.centering_weight <= 20:
+    parser.error("--centering_scale in [0.02, 1.0] m and --centering_weight in [0.1, 20]")
 narrow_eval_min = .10 if args.min_step_width is None else args.min_step_width
 if any(not narrow_eval_min <= width <= .50 for width in args.step_widths):
     parser.error(f"Step width must be between {narrow_eval_min:.2f} and 0.50 m")
@@ -118,11 +134,14 @@ if args.initialize_from:
         (ROOT / "source/beam_walking/beam_walking/experiment" / name).read_bytes()
         for name in ("task.py", "protocol.py"))).hexdigest()
     _narrow = (args.min_step_width is not None or args.width_tolerance is not None
-               or args.lateral_heading_gain != 0.0)
+               or args.lateral_heading_gain != 0.0 or args.heading_cost_weight != 1.0
+               or args.heading_cost_on_observation or args.centering_scale != 0.25
+               or args.centering_weight != 1.0)
     deployment_parent_metadata(args.initialize_from, _task_hash,
                                allow_task_change=_narrow)
 from gpu_capacity import check_capacity
-capacity = check_capacity(args.mode, args.num_envs, args.device or "cuda:0", args.video)
+capacity = check_capacity(args.mode, args.num_envs, args.device or "cuda:0", args.video,
+                          allow_shared_gpu=args.allow_shared_gpu)
 if args.video:
     args.enable_cameras = True
 app = AppLauncher(args).app
@@ -174,6 +193,10 @@ def main():
     if args.width_tolerance is not None:
         protocol.WIDTH_SCORE_VARIANCE = args.width_tolerance ** 2
     task.LATERAL_HEADING_GAIN = args.lateral_heading_gain
+    task.HEADING_COST_WEIGHT = args.heading_cost_weight
+    task.HEADING_COST_ON_OBSERVATION = args.heading_cost_on_observation
+    task.CENTERING_SCALE = args.centering_scale
+    task.CENTERING_WEIGHT = args.centering_weight
     cfg = DeploymentBeamEnvCfg() if args.deployment_dr else BeamEnvCfg()
     cfg.scene.num_envs = args.num_envs
     cfg.seed = args.seed
@@ -228,6 +251,10 @@ def main():
             "min_step_width": args.min_step_width,
             "width_tolerance_sigma_m": args.width_tolerance,
             "lateral_heading_gain_rad_per_m": args.lateral_heading_gain,
+            "heading_cost_weight": args.heading_cost_weight,
+            "heading_cost_on_observation": args.heading_cost_on_observation,
+            "centering_scale_m": args.centering_scale,
+            "centering_weight": args.centering_weight,
             "observation_normalization_range": list(protocol.STEP_WIDTH_RANGE)}}
     if args.deployment_dr:
         metadata["base_training_source_sha256"] = metadata["training_source_sha256"]
