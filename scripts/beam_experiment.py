@@ -16,6 +16,8 @@ from beam_walking.experiment.stability import training_source_hash
 from beam_walking.experiment.deployment import (
     STANCE_START_PROBABILITY, TRAINING_ITERATIONS, TRAINING_NUM_ENVS,
 )
+from beam_walking.experiment.perturbation import (
+    add_perturbation_arguments, perturbation_from_args, summarize_outcomes)
 from isaaclab.app import AppLauncher
 
 parser = argparse.ArgumentParser()
@@ -60,6 +62,7 @@ parser.add_argument("--centering_scale", type=float, default=0.25,
                     help="Lateral centering cost scale in metres. Frozen protocol: 0.25")
 parser.add_argument("--centering_weight", type=float, default=1.0,
                     help="Multiplier on the lateral centering cost. Frozen protocol: 1.0")
+add_perturbation_arguments(parser)
 AppLauncher.add_app_launcher_args(parser)
 args = parser.parse_args()
 if args.dfs is None:
@@ -103,6 +106,12 @@ if args.heading_cost_on_observation and args.lateral_heading_gain == 0.0:
     parser.error("--heading_cost_on_observation requires --lateral_heading_gain")
 if not 0.02 <= args.centering_scale <= 1.0 or not 0.1 <= args.centering_weight <= 20:
     parser.error("--centering_scale in [0.02, 1.0] m and --centering_weight in [0.1, 20]")
+try:
+    # Opt-in ramped base wrench; None keeps the push-free protocol. Applied via
+    # an environment subclass, so task.py and its checkpoint hash are unchanged.
+    perturbation_cfg = perturbation_from_args(args)
+except ValueError as error:
+    parser.error(str(error))
 narrow_eval_min = .10 if args.min_step_width is None else args.min_step_width
 if any(not narrow_eval_min <= width <= .50 for width in args.step_widths):
     parser.error(f"Step width must be between {narrow_eval_min:.2f} and 0.50 m")
@@ -205,6 +214,9 @@ def main():
     if args.mode == "evaluate":
         cfg.events.motor_gain_randomization = None
     env_class = DeploymentBeamEnv if args.deployment_dr else BeamEnv
+    if perturbation_cfg is not None:
+        from beam_walking.experiment.perturbation_env import perturbed_env_class
+        env_class = perturbed_env_class(env_class, perturbation_cfg)
     env = env_class(cfg, render_mode="rgb_array" if args.video else None)
     active_env = env
     if args.stance_start_probability > 0:
@@ -247,6 +259,8 @@ def main():
         "watcher_enabled": bool(args.mode == "train" and not args.no_watcher),
         "deployment_domain_randomization": bool(args.deployment_dr),
         "deployment_profile": deployment_profile() if args.deployment_dr else None,
+        "external_pushes": perturbation_cfg is not None,
+        "perturbation": perturbation_cfg.profile() if perturbation_cfg else None,
         "narrow_beam_extension": {
             "min_step_width": args.min_step_width,
             "width_tolerance_sigma_m": args.width_tolerance,
@@ -366,6 +380,27 @@ def main():
         if not bool(candidates.any()):
             raise RuntimeError("Chronology smoke found no complete surviving phase 0..23 cycle")
         chronology_env = int(candidates.nonzero()[0])
+        perturbation_checks = None
+        if perturbation_cfg is not None:
+            applied = env.applied_perturbation
+            if applied is None or not env.scene["robot"].permanent_wrench_composer.active:
+                raise RuntimeError("Perturbation was requested but no base wrench was applied")
+            if any(not bool(torch.isfinite(value).all()) for value in applied.values()):
+                raise RuntimeError("Applied perturbation is not finite")
+            envelope = applied["envelope"]
+            if (float(envelope.min()) < perturbation_cfg.start_fraction - 1e-6
+                    or float(envelope.max()) > 1. + 1e-6):
+                raise RuntimeError("Perturbation envelope left its configured range")
+            force_norm = applied["force_w"].norm(dim=-1)
+            if float(force_norm.max()) > perturbation_cfg.max_force_n * float(envelope.max()) + 1e-4:
+                raise RuntimeError("Applied perturbation force exceeds the ramped bound")
+            perturbation_checks = {
+                "profile": perturbation_cfg.profile(),
+                "last_step_envelope_min": float(envelope.min()),
+                "last_step_envelope_max": float(envelope.max()),
+                "last_step_force_n_max": float(force_norm.max()),
+                "last_step_torque_nm_max": float(applied["torque_w"].norm(dim=-1).max()),
+            }
         reset_obs, _ = wrapped.reset()
         if not bool((command(env).phase_ticks == 0).all()):
             raise RuntimeError("Explicit smoke reset did not return every environment to phase zero")
@@ -391,6 +426,7 @@ def main():
             "deployment_profile": deployment_profile()
                 if args.deployment_dr else None,
             "deployment_runtime_summary": runtime_summary,
+            "perturbation": perturbation_checks,
             "observation_corruption": bool(
                 cfg.observations.policy.enable_corruption)}, indent=2))
         print("SMOKE_OK", obs["policy"].shape, "feet", command(env).feet, flush=True)
@@ -443,6 +479,7 @@ def main():
                 original_save(path, {"common_step_counter": env.common_step_counter,
                     "training_kind": metadata.get("training_kind", "fresh"),
                     "parent_checkpoint_sha256": metadata.get("parent_checkpoint_sha256"),
+                    "root_parent_checkpoint_sha256": metadata.get("root_parent_checkpoint_sha256"),
                     "task_sha256": metadata["task_sha256"],
                     "training_source_sha256": metadata["training_source_sha256"],
                     "deployment_profile_schema": (
@@ -515,20 +552,28 @@ def evaluate(env, wrapped, policy, metadata):
         reset_plan.append([rng.uniform(-.04, .04), rng.uniform(-.01, .01)])
         stance_starts.append(rng.random() < args.stance_start_probability)
     reset_plan = np.asarray(reset_plan)
+    disturbed = perturbation_cfg is not None
+    suffix = "perturbed" if disturbed else "nominal"
     expected_conditions = []
     for width in args.step_widths:
         for df in args.dfs:
-            filename = f"trial_s{width:.3f}_d{df:.3f}_v{args.speed:.3f}_{args.gait}_p{args.period:.2f}_nominal.npz"
+            filename = f"trial_s{width:.3f}_d{df:.3f}_v{args.speed:.3f}_{args.gait}_p{args.period:.2f}_{suffix}.npz"
             expected_conditions.append({"filename": filename, "step_width": width, "df": df,
-                                        "disturbed": False})
+                                        "disturbed": disturbed})
     manifest = {"terrain": "flat_ground", "step_width_frame": STEP_WIDTH_FRAME,
+                "external_pushes": disturbed,
+                "perturbation": perturbation_cfg.profile() if disturbed else None,
                 "expected_conditions": expected_conditions,
                 "seeds": list(range(args.seed, args.seed + n)), "period": args.period,
                 "speed": args.speed, "gait": args.gait,
                 "source_sha256": metadata["task_sha256"], "checkpoint_sha256": metadata["checkpoint_sha256"]}
     (args.output / "evaluation_manifest.json").write_text(json.dumps(manifest, indent=2))
+    outcome_summaries = {}
     for width in args.step_widths:
         for df in args.dfs:
+            if disturbed:
+                # Common disturbance sequence across every width/DF condition.
+                env.perturbation.reseed(args.seed)
             c.evaluation = {"df": df, "speed": args.speed,
                 "gait": GAITS.index(args.gait), "period": args.period, "step_width": width,
                 "stance_start": torch.tensor(stance_starts, device=env.device, dtype=torch.bool),
@@ -556,9 +601,14 @@ def evaluate(env, wrapped, policy, metadata):
                 active &= ~done.bool()
                 if not active.any():
                     break
-            stem = f"trial_s{width:.3f}_d{df:.3f}_v{args.speed:.3f}_{args.gait}_p{args.period:.2f}_nominal"
+            stem = f"trial_s{width:.3f}_d{df:.3f}_v{args.speed:.3f}_{args.gait}_p{args.period:.2f}_{suffix}"
+            if disturbed:
+                outcome_summaries[stem] = {"step_width": width, "df": df,
+                                           **summarize_outcomes(traces)}
             np.savez_compressed(args.output / f"{stem}.npz", **{k: np.stack(v) for k, v in traces.items()},
-                df=df, speed=args.speed, disturbed=False, terrain="flat_ground", control_dt=CONTROL_DT,
+                df=df, speed=args.speed, disturbed=disturbed, terrain="flat_ground", control_dt=CONTROL_DT,
+                external_pushes=disturbed,
+                perturbation=json.dumps(manifest["perturbation"], sort_keys=True),
                 step_width_frame=STEP_WIDTH_FRAME,
                 source_sha256=metadata["task_sha256"], checkpoint_sha256=metadata["checkpoint_sha256"],
                 period=args.period, gait=args.gait, step_width=width,
@@ -573,6 +623,11 @@ def evaluate(env, wrapped, policy, metadata):
                 outcome = "failure" if failed else ("success" if success_trace[valid_trace][-1] else "timeout")
                 imageio.mimsave(args.output / f"{stem}_seed{args.seed + args.camera_env}_{outcome}.mp4", frames, fps=25)
             print("EVALUATED", stem, "trials", n, flush=True)
+    if disturbed:
+        (args.output / "perturbation_summary.json").write_text(json.dumps(
+            {"perturbation": manifest["perturbation"], "conditions": outcome_summaries}, indent=2))
+        for stem, summary in outcome_summaries.items():
+            print("PERTURBED_OUTCOME", stem, json.dumps(summary), flush=True)
 
 
 if __name__ == "__main__":

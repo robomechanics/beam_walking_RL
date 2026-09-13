@@ -17,6 +17,8 @@ from beam_walking.experiment.protocol import (
     CONTROL_DT, GAITS, GAIT_OFFSETS, MIN_SWING_STEPS, PERIOD_TICKS,
     STEP_WIDTH_FRAME, validate_scientific_gait_duties,
 )
+from beam_walking.experiment.perturbation import (
+    add_perturbation_arguments, perturbation_from_args, summarize_outcomes)
 from isaaclab.app import AppLauncher
 
 parser = argparse.ArgumentParser()
@@ -45,6 +47,7 @@ parser.add_argument("--kd_scale", type=float)
 parser.add_argument(
     "--require_deployment_checkpoint", action="store_true",
     help="Reject checkpoints not trained with the frozen deployment DR profile")
+add_perturbation_arguments(parser)
 AppLauncher.add_app_launcher_args(parser)
 args = parser.parse_args()
 if args.dfs is None:
@@ -58,6 +61,12 @@ elif args.kp_scale is not None or args.kd_scale is not None:
     parser.error("Gain scales are valid only with --deployment_profile fixed_gains")
 if not 0 <= args.stance_start_probability <= 1:
     parser.error("Stance-start probability must be in [0,1]")
+try:
+    # Opt-in ramped base wrench. Perturbed archives are labelled and use a
+    # distinct schema so they are never mistaken for nominal protocol data.
+    perturbation_cfg = perturbation_from_args(args)
+except ValueError as error:
+    parser.error(str(error))
 ticks = round(args.period / CONTROL_DT)
 if ticks not in PERIOD_TICKS or not np.isclose(ticks * CONTROL_DT, args.period):
     parser.error("Period must be 0.36-0.54 s in 0.02 s increments")
@@ -112,6 +121,7 @@ from beam_walking.experiment.analysis import (
 )
 from beam_walking.experiment.task import BeamEnv, BeamEnvCfg, BeamPPORunnerCfg, command
 from beam_walking.experiment.deployment import (
+    DEPLOYMENT_SOURCE_PATHS,
     STANCE_START_PROBABILITY, TRAINING_ITERATIONS, TRAINING_NUM_ENVS,
     deployment_profile, deployment_profile_sha256,
     deployment_training_source_hash, validate_gain_scales,
@@ -120,7 +130,49 @@ from beam_walking.experiment.deployment import (
 from beam_walking.experiment.deployment_task import (
     DeploymentBeamEnv, DeploymentBeamEnvCfg, motor_gain_event,
 )
-from beam_walking.experiment.stability import training_source_hash
+from beam_walking.experiment.stability import TRAINING_SOURCE_PATHS, training_source_hash
+
+# Science sources must match the live tree byte for byte; launch-only scripts
+# may drift (e.g. new flags) without invalidating a finished checkpoint.
+SCIENCE_SOURCE_PATHS = (
+    "source/beam_walking/beam_walking/experiment/task.py",
+    "source/beam_walking/beam_walking/experiment/protocol.py",
+    *DEPLOYMENT_SOURCE_PATHS,
+)
+
+
+def snapshot_source_path(snapshot, relative):
+    name = Path(relative).name
+    return snapshot / "experiment" / name if relative.startswith("source/") else snapshot / name
+
+
+def training_source_check(training, snapshot):
+    """Verify the recorded training-source hash against the live tree or, if only
+    launch scripts changed since, against the checkpoint's own source snapshot."""
+    recorded = training.get("training_source_sha256")
+    live = deployment_training_source_hash(ROOT, training_source_hash(ROOT))
+    if recorded == live:
+        return {"verified": True, "against": "live_tree", "drifted_launch_scripts": []}
+    try:
+        snapshot_hash = deployment_training_source_hash(
+            ROOT, hashlib.sha256(b"".join(
+                snapshot_source_path(snapshot, rel).read_bytes()
+                for rel in TRAINING_SOURCE_PATHS)).hexdigest())
+        # deployment_training_source_hash reads DEPLOYMENT_SOURCE_PATHS from
+        # ROOT; those must be identical in the snapshot for the hash to apply.
+        science_match = all(
+            snapshot_source_path(snapshot, rel).read_bytes() == (ROOT / rel).read_bytes()
+            for rel in SCIENCE_SOURCE_PATHS)
+        drifted = [rel for rel in TRAINING_SOURCE_PATHS
+                   if snapshot_source_path(snapshot, rel).read_bytes() != (ROOT / rel).read_bytes()]
+    except OSError:
+        return {"verified": False, "against": "missing_snapshot", "drifted_launch_scripts": None}
+    verified = bool(snapshot_hash == recorded and science_match
+                    and all(rel not in SCIENCE_SOURCE_PATHS for rel in drifted))
+    return {"verified": verified, "against": "checkpoint_source_snapshot",
+            "snapshot_training_source_sha256": snapshot_hash,
+            "live_training_source_sha256": live,
+            "drifted_launch_scripts": drifted}
 
 
 FORCE_THRESHOLDS_N = (2., 5., 10.)
@@ -196,19 +248,24 @@ def evaluate(env, wrapped, policy, provenance):
         reset_plan.append([rng.uniform(-.04, .04), rng.uniform(-.01, .01)])
         stance_starts.append(rng.random() < args.stance_start_probability)
     reset_plan = np.asarray(reset_plan)
+    disturbed = perturbation_cfg is not None
+    suffix = "perturbed" if disturbed else "nominal"
+    schema = f"{NOMINAL_SCHEMA}_perturbed" if disturbed else NOMINAL_SCHEMA
+    perturbation_profile = perturbation_cfg.profile() if disturbed else None
     expected = []
     for width in args.step_widths:
         for duty in args.dfs:
             stem = (
                 f"trial_s{width:.3f}_d{duty:.3f}_v{args.speed:.3f}_"
-                f"{args.gait}_p{args.period:.2f}_nominal")
+                f"{args.gait}_p{args.period:.2f}_{suffix}")
             expected.append({
                 "filename": f"{stem}.npz", "step_width": width,
-                "df": duty, "disturbed": False,
+                "df": duty, "disturbed": disturbed,
             })
     manifest = {
-        "schema": NOMINAL_SCHEMA,
-        "terrain": "flat_ground", "external_pushes": False,
+        "schema": schema,
+        "terrain": "flat_ground", "external_pushes": disturbed,
+        "perturbation": perturbation_profile,
         "split": args.split,
         "condition_reset_seed": provenance["condition_reset_seed"],
         "training_provenance_sha256":
@@ -249,8 +306,12 @@ def evaluate(env, wrapped, policy, provenance):
     (args.output / "evaluation_manifest.json").write_text(json.dumps(manifest, indent=2))
 
     matched_initial = None
+    outcome_summaries = {}
     for width in args.step_widths:
         for duty in args.dfs:
+            if disturbed:
+                # Common disturbance sequence across every width/DF condition.
+                env.perturbation.reseed(args.seed)
             gait_command.evaluation = {
                 "df": duty, "speed": args.speed,
                 "gait": GAITS.index(args.gait), "period": args.period,
@@ -275,7 +336,7 @@ def evaluate(env, wrapped, policy, provenance):
                     "Condition reset did not reproduce matched root/joint states")
             stem = (
                 f"trial_s{width:.3f}_d{duty:.3f}_v{args.speed:.3f}_"
-                f"{args.gait}_p{args.period:.2f}_nominal")
+                f"{args.gait}_p{args.period:.2f}_{suffix}")
             video_writer = None
             temporary_video = None
             if args.video:
@@ -337,10 +398,11 @@ def evaluate(env, wrapped, policy, provenance):
                 if video_writer is not None:
                     video_writer.close()
             archive_metadata = {
-                "schema": NOMINAL_SCHEMA,
+                "schema": schema,
                 "df": duty, "command_speed": args.speed,
-                "disturbed": False, "terrain": "flat_ground",
-                "external_pushes": False, "split": args.split,
+                "disturbed": disturbed, "terrain": "flat_ground",
+                "external_pushes": disturbed, "split": args.split,
+                "perturbation": np.asarray(json.dumps(perturbation_profile, sort_keys=True)),
                 "condition_reset_seed": provenance["condition_reset_seed"],
                 "training_provenance_sha256":
                     provenance["training_provenance_sha256"],
@@ -396,6 +458,9 @@ def evaluate(env, wrapped, policy, provenance):
                 })
             archive = nominal_archive_payload(traces, archive_metadata)
             np.savez_compressed(args.output / f"{stem}.npz", **archive)
+            if disturbed:
+                outcome_summaries[stem] = {"step_width": width, "df": duty,
+                                           **summarize_outcomes(traces)}
             if temporary_video is not None:
                 success_trace = archive["success"][:, args.camera_env]
                 valid_trace = archive["valid"][:, args.camera_env].astype(bool)
@@ -413,8 +478,15 @@ def evaluate(env, wrapped, policy, provenance):
         raise RuntimeError(
             f"Evaluation archive mismatch: missing={sorted(expected_names-actual_names)}, "
             f"extra={sorted(actual_names-expected_names)}")
+    if disturbed:
+        (args.output / "perturbation_summary.json").write_text(json.dumps(
+            {"perturbation": perturbation_profile, "conditions": outcome_summaries},
+            indent=2))
+        for stem, summary in outcome_summaries.items():
+            print("PERTURBED_OUTCOME", stem, json.dumps(summary), flush=True)
     completion = {
-        "complete": True, "schema": NOMINAL_SCHEMA,
+        "complete": True, "schema": schema,
+        "external_pushes": disturbed, "perturbation": perturbation_profile,
         "conditions": len(expected_names), "trials_per_condition": n,
         "source_sha256": provenance["task_sha256"],
         "checkpoint_sha256": provenance["checkpoint_sha256"],
@@ -450,6 +522,8 @@ def main():
         ROOT / "source/beam_walking/beam_walking/experiment/deployment.py",
         ROOT / "source/beam_walking/beam_walking/experiment/deployment_task.py",
         ROOT / "source/beam_walking/beam_walking/experiment/deployment_actuator.py",
+        ROOT / "source/beam_walking/beam_walking/experiment/perturbation.py",
+        ROOT / "source/beam_walking/beam_walking/experiment/perturbation_env.py",
     ):
         shutil.copy2(source, snapshot / source.name)
     (args.output / "capacity.json").write_text(json.dumps(capacity, indent=2))
@@ -479,6 +553,9 @@ def main():
     cfg.recorders = EvaluationRecorderManagerCfg()
     env_class = (BeamEnv if args.deployment_profile == "nominal"
                  else DeploymentBeamEnv)
+    if perturbation_cfg is not None:
+        from beam_walking.experiment.perturbation_env import perturbed_env_class
+        env_class = perturbed_env_class(env_class, perturbation_cfg)
     env = env_class(cfg, render_mode="rgb_array" if args.video else None)
     wrapped = None
     try:
@@ -507,8 +584,11 @@ def main():
         training = json.loads(training_bytes)
         expected_profile = deployment_profile()
         expected_profile_hash = deployment_profile_sha256()
-        current_deployment_source = deployment_training_source_hash(
-            ROOT, training_source_hash(ROOT))
+        source_check = training_source_check(
+            training, args.checkpoint.parent / "source_snapshot")
+        current_deployment_source = (
+            training.get("training_source_sha256") if source_check["verified"]
+            else deployment_training_source_hash(ROOT, training_source_hash(ROOT)))
         deployment_training_verified = bool(
             training.get("deployment_domain_randomization") is True
             and training.get("deployment_profile") == expected_profile
@@ -567,6 +647,7 @@ def main():
             "checkpoint": str(args.checkpoint.resolve()),
             "checkpoint_sha256": checkpoint_hash,
             "checkpoint_iteration": runner.current_learning_iteration,
+            "training_source_check": source_check,
             "versions": {
                 name: importlib.metadata.version(name)
                 for name in ("torch", "isaaclab", "isaacsim", "rsl-rl-lib")
@@ -600,5 +681,12 @@ def main():
 if __name__ == "__main__":
     try:
         main()
+    except BaseException:
+        # app.close() can end the process before Python reports the failure.
+        import traceback
+        traceback.print_exc()
+        sys.stdout.flush()
+        sys.stderr.flush()
+        raise
     finally:
         app.close()

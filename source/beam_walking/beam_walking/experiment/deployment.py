@@ -118,13 +118,42 @@ def deployment_parent_metadata(checkpoint, task_sha256, allow_task_change=False)
     checkpoint = Path(checkpoint).resolve()
     checkpoint_bytes = checkpoint.read_bytes()
     digest = hashlib.sha256(checkpoint_bytes).hexdigest()
-    if digest != DEPLOYMENT_PARENT_SHA256:
-        raise ValueError("Deployment fine-tuning requires the selected seed-2 model_1799 checkpoint")
     provenance_path = checkpoint.parent / "provenance.json"
     provenance_bytes = provenance_path.read_bytes()
     parent = json.loads(provenance_bytes)
     state = torch.load(checkpoint, map_location="cpu", weights_only=False)
     info = state.get("infos") or {}
+    if digest != DEPLOYMENT_PARENT_SHA256:
+        # Chained narrow-beam stage: the parent is itself a deployment
+        # fine-tune whose root is the pinned seed-2 checkpoint. Only allowed
+        # with the narrow-beam extension; the full chain is recorded.
+        root = (parent.get("root_parent_checkpoint_sha256")
+                or parent.get("parent_checkpoint_sha256"))
+        if not (allow_task_change
+                and parent.get("training_kind") == "deployment_finetune"
+                and root == DEPLOYMENT_PARENT_SHA256
+                and parent.get("narrow_beam_extension")
+                and state.get("iter") == 1799
+                and info.get("task_sha256") == parent.get("task_sha256")):
+            raise ValueError("Deployment fine-tuning requires the selected seed-2 model_1799 checkpoint")
+        return {
+            "training_kind": "deployment_finetune",
+            "chained_from_parent": True,
+            "parent_task_sha256": parent.get("task_sha256"),
+            "current_task_sha256": task_sha256,
+            "task_changed_from_parent": parent.get("task_sha256") != task_sha256,
+            "parent_checkpoint": str(checkpoint),
+            "parent_checkpoint_sha256": digest,
+            "root_parent_checkpoint_sha256": DEPLOYMENT_PARENT_SHA256,
+            "parent_checkpoint_iteration": state["iter"],
+            "parent_training_seed": parent.get("seed"),
+            "root_parent_training_seed": 2,
+            "parent_provenance_sha256": hashlib.sha256(provenance_bytes).hexdigest(),
+            "parent_narrow_beam_extension": parent.get("narrow_beam_extension"),
+            "parent_common_step_counter": int(info.get("common_step_counter", 0)),
+            "optimizer_initialization": "fresh_for_dr",
+            "updates_counted_from": "start_of_dr_finetuning",
+        }
     parent_task = parent.get("task_sha256")
     task_matches = (parent_task == task_sha256 and info.get("task_sha256") == task_sha256)
     task_consistent = parent_task is not None and info.get("task_sha256") == parent_task
@@ -139,6 +168,7 @@ def deployment_parent_metadata(checkpoint, task_sha256, allow_task_change=False)
         "task_changed_from_parent": not task_matches,
         "parent_checkpoint": str(checkpoint),
         "parent_checkpoint_sha256": digest,
+        "root_parent_checkpoint_sha256": DEPLOYMENT_PARENT_SHA256,
         "parent_checkpoint_iteration": state["iter"],
         "parent_training_seed": parent["seed"],
         "parent_provenance_sha256": hashlib.sha256(provenance_bytes).hexdigest(),
@@ -169,12 +199,17 @@ def initialize_deployment_policy(runner, checkpoint, task_sha256,
 
 def deployment_finetune_lineage_valid(training, saved):
     """Require checkpoint-bound parent identity for deployment fine-tune evaluation."""
+    def rooted(record):
+        return DEPLOYMENT_PARENT_SHA256 in (
+            record.get("parent_checkpoint_sha256"),
+            record.get("root_parent_checkpoint_sha256"))
     return bool(
         training.get("training_kind") == "deployment_finetune"
         and training.get("fresh_training") is False
-        and training.get("parent_checkpoint_sha256") == DEPLOYMENT_PARENT_SHA256
-        and training.get("parent_training_seed") == 2
+        and rooted(training)
+        and 2 in (training.get("parent_training_seed"),
+                  training.get("root_parent_training_seed"))
         and training.get("parent_checkpoint_iteration") == 1799
         and training.get("initial_weights_match_parent") is True
-        and saved.get("parent_checkpoint_sha256") == DEPLOYMENT_PARENT_SHA256
+        and rooted(saved)
         and saved.get("training_kind") == "deployment_finetune")

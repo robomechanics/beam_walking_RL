@@ -40,3 +40,11 @@ It uses the same original seed-2 checkpoint. Walk DF 0.50/0.625 failed all comma
 gates, so valid walking CoT remains limited to DF 0.75. The new lower surface
 shows periodicity of realized motion, including incorrectly executed commands.
 The historical figures below remain unchanged.
+
+## High-duty walk selector
+
+The separate seed-4 high-duty walking-policy figures are in
+[`high_duty_walk_selector/`](high_duty_walk_selector/). The final consolidated
+figure shows that DF 0.80 was selected at every tested width and speed, with
+median achieved DF 0.8229 and 100% fresh-validation compliance. This extension
+is kept separate from the audited seed-2 paper-claim figure set above.
