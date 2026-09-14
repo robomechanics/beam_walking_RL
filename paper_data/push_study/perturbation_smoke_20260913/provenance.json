@@ -1,0 +1,68 @@
+{
+  "argv": [
+    "scripts/beam_experiment.py",
+    "smoke",
+    "--num_envs",
+    "64",
+    "--steps",
+    "96",
+    "--headless",
+    "--perturbation",
+    "--output",
+    "results/perturbation_smoke_20260913"
+  ],
+  "seed": 42,
+  "mode": "smoke",
+  "split": "validation",
+  "step_width_frame": "body",
+  "git_revision": "cb6b4712971a845d55ca5b697f1ae06107c53aee",
+  "versions": {
+    "torch": "2.7.0+cu128",
+    "isaaclab": "0.42.25",
+    "isaacsim": "5.1.0.0",
+    "rsl-rl-lib": "3.0.1"
+  },
+  "gpu": "NVIDIA GeForce RTX 5070 Ti",
+  "task_sha256": "40272cb456abcb948e4d0a195b1c828a590dabb2b7eb032ee2c85e5419e49938",
+  "training_source_sha256": "807d6e3b973d2ec947b4348098eafb0d06fe07e77624ffa3da2ac78f97db6e56",
+  "training_num_envs": 64,
+  "training_iterations_requested": 1800,
+  "stance_start_probability": 0.1,
+  "checkpoint_selection_rule": "final_requested_iteration",
+  "watcher_enabled": false,
+  "deployment_domain_randomization": false,
+  "deployment_profile": null,
+  "external_pushes": true,
+  "perturbation": {
+    "schema": "ramped_base_wrench_v1",
+    "frame": "world",
+    "body": "base",
+    "envelope": "start + (1 - start) * clip(progress, 0, 1)",
+    "progress": "episode_time_s / ramp_time_s",
+    "sampling": "piecewise_constant_random_wrench",
+    "max_force_n": 25.0,
+    "max_torque_nm": 3.0,
+    "start_fraction": 0.1,
+    "ramp_mode": "time",
+    "ramp_time_s": 10.0,
+    "ramp_distance_m": 3.0,
+    "hold_min_s": 0.1,
+    "hold_max_s": 0.4,
+    "vertical_force_fraction": 0.25
+  },
+  "narrow_beam_extension": {
+    "min_step_width": null,
+    "width_tolerance_sigma_m": null,
+    "lateral_heading_gain_rad_per_m": 0.0,
+    "heading_cost_weight": 1.0,
+    "heading_cost_on_observation": false,
+    "centering_scale_m": 0.25,
+    "centering_weight": 1.0,
+    "observation_normalization_range": [
+      0.1,
+      0.5
+    ]
+  },
+  "fresh_training": false,
+  "training_lineage_id": null
+}

@@ -120,3 +120,9 @@ events.out.tfevents.*
 # TacSL sensor
 **/tactile_record/*
 **/gelsight_r15_data/*
+
+# Curated paper data: the subset of results/ that supports the manuscript.
+# Built by scripts/collect_paper_data.py; tracked despite the global patterns.
+!/paper_data/
+!/paper_data/**
+!/paper_data/**/*.pt

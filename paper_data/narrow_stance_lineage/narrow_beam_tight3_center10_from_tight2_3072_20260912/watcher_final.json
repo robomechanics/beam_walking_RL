@@ -1,0 +1,518 @@
+{
+  "schema": "ppo-training-watch-v1",
+  "generated_unix": 1789256142.0529575,
+  "classification": "training_diagnostic_not_final_evaluation",
+  "latest_logged_iteration": 1799,
+  "window_logged_updates": 20,
+  "relative_plateau_tolerance": 0.02,
+  "reward_plateau_indicated": false,
+  "metrics": {
+    "reward": {
+      "Train/mean_reward": {
+        "samples": 1800,
+        "latest_iteration": 1799,
+        "latest": 311.1824951171875,
+        "recent_mean": 311.36033020019534,
+        "recent_std": 4.161736427284669,
+        "recent_iterations": [
+          1780,
+          1799
+        ],
+        "plateau_indicated": false,
+        "prior_mean": 310.8318359375,
+        "prior_iterations": [
+          1760,
+          1779
+        ],
+        "mean_change": 0.5284942626953466,
+        "relative_mean_change": 0.0016973718596570754,
+        "recent_fitted_change": 6.538868059430803
+      },
+      "Train/mean_reward/time": {
+        "samples": 1800,
+        "latest_iteration": 2769,
+        "latest": 311.1824951171875,
+        "recent_mean": 311.36033020019534,
+        "recent_std": 4.161736427284669,
+        "recent_iterations": [
+          2741,
+          2769
+        ],
+        "plateau_indicated": false,
+        "prior_mean": 310.8318359375,
+        "prior_iterations": [
+          2711,
+          2739
+        ],
+        "mean_change": 0.5284942626953466,
+        "relative_mean_change": 0.0016973718596570754,
+        "recent_fitted_change": 6.610922179766149
+      }
+    },
+    "episode_length": {
+      "Train/mean_episode_length": {
+        "samples": 1800,
+        "latest_iteration": 1799,
+        "latest": 985.1199951171875,
+        "recent_mean": 992.8745025634765,
+        "recent_std": 6.167950490832556,
+        "recent_iterations": [
+          1780,
+          1799
+        ],
+        "plateau_indicated": true,
+        "prior_mean": 992.5559967041015,
+        "prior_iterations": [
+          1760,
+          1779
+        ],
+        "mean_change": 0.31850585937502274,
+        "relative_mean_change": 0.00032079165952260917,
+        "recent_fitted_change": 5.473856898716518
+      },
+      "Train/mean_episode_length/time": {
+        "samples": 1800,
+        "latest_iteration": 2769,
+        "latest": 985.1199951171875,
+        "recent_mean": 992.8745025634765,
+        "recent_std": 6.167950490832556,
+        "recent_iterations": [
+          2741,
+          2769
+        ],
+        "plateau_indicated": true,
+        "prior_mean": 992.5559967041015,
+        "prior_iterations": [
+          2711,
+          2739
+        ],
+        "mean_change": 0.31850585937502274,
+        "relative_mean_change": 0.00032079165952260917,
+        "recent_fitted_change": 5.722522709993708
+      }
+    },
+    "failure": {
+      "Episode_Termination/support_failure": {
+        "samples": 1800,
+        "latest_iteration": 1799,
+        "latest": 0.01649983786046505,
+        "recent_mean": 0.015517172357067465,
+        "recent_std": 0.0008412868019162156,
+        "recent_iterations": [
+          1780,
+          1799
+        ],
+        "plateau_indicated": true,
+        "prior_mean": 0.012482707249000668,
+        "prior_iterations": [
+          1760,
+          1779
+        ],
+        "mean_change": 0.003034465108066797,
+        "relative_mean_change": 0.003034465108066797,
+        "recent_fitted_change": 0.0017239043356052468
+      }
+    },
+    "timeout": {
+      "Episode_Termination/time_out": {
+        "samples": 1800,
+        "latest_iteration": 1799,
+        "latest": 0.9835001826286316,
+        "recent_mean": 0.9844828724861145,
+        "recent_std": 0.0008412969148620286,
+        "recent_iterations": [
+          1780,
+          1799
+        ],
+        "plateau_indicated": true,
+        "prior_mean": 0.9875173449516297,
+        "prior_iterations": [
+          1760,
+          1779
+        ],
+        "mean_change": -0.0030344724655151367,
+        "relative_mean_change": -0.0030344724655151367,
+        "recent_fitted_change": -0.0017239264079502651
+      }
+    },
+    "crossing": {
+      "Episode_Termination/crossing": {
+        "samples": 1800,
+        "latest_iteration": 1799,
+        "latest": 0.0,
+        "recent_mean": 0.0,
+        "recent_std": 0.0,
+        "recent_iterations": [
+          1780,
+          1799
+        ],
+        "plateau_indicated": true,
+        "prior_mean": 0.0,
+        "prior_iterations": [
+          1760,
+          1779
+        ],
+        "mean_change": 0.0,
+        "relative_mean_change": 0.0,
+        "recent_fitted_change": 0.0
+      }
+    },
+    "gait": {
+      "Gait/contact_accuracy": {
+        "samples": 1800,
+        "latest_iteration": 1799,
+        "latest": 0.911227822303772,
+        "recent_mean": 0.911544930934906,
+        "recent_std": 0.00044389860946276793,
+        "recent_iterations": [
+          1780,
+          1799
+        ],
+        "plateau_indicated": true,
+        "prior_mean": 0.9115540832281113,
+        "prior_iterations": [
+          1760,
+          1779
+        ],
+        "mean_change": -9.15229320530564e-06,
+        "relative_mean_change": -9.15229320530564e-06,
+        "recent_fitted_change": -0.0005142790930611746
+      },
+      "Gait/stance_recall": {
+        "samples": 1800,
+        "latest_iteration": 1799,
+        "latest": 0.9631919860839844,
+        "recent_mean": 0.9637270241975784,
+        "recent_std": 0.00047542245390560145,
+        "recent_iterations": [
+          1780,
+          1799
+        ],
+        "plateau_indicated": true,
+        "prior_mean": 0.9636971890926361,
+        "prior_iterations": [
+          1760,
+          1779
+        ],
+        "mean_change": 2.9835104942255164e-05,
+        "relative_mean_change": 2.9835104942255164e-05,
+        "recent_fitted_change": -0.00025468809264046804
+      },
+      "Gait/swing_recall": {
+        "samples": 1800,
+        "latest_iteration": 1799,
+        "latest": 0.8104667663574219,
+        "recent_mean": 0.8105828374624252,
+        "recent_std": 0.0010315055604011364,
+        "recent_iterations": [
+          1780,
+          1799
+        ],
+        "plateau_indicated": true,
+        "prior_mean": 0.8105307042598724,
+        "prior_iterations": [
+          1760,
+          1779
+        ],
+        "mean_change": 5.2133202552817615e-05,
+        "relative_mean_change": 5.2133202552817615e-05,
+        "recent_fitted_change": -0.0017788197313036238
+      },
+      "Gait/substep_contact_accuracy": {
+        "samples": 1800,
+        "latest_iteration": 1799,
+        "latest": 0.9065420627593994,
+        "recent_mean": 0.9069164365530014,
+        "recent_std": 0.0003848947945009344,
+        "recent_iterations": [
+          1780,
+          1799
+        ],
+        "plateau_indicated": true,
+        "prior_mean": 0.9072105616331101,
+        "prior_iterations": [
+          1760,
+          1779
+        ],
+        "mean_change": -0.0002941250801087314,
+        "relative_mean_change": -0.0002941250801087314,
+        "recent_fitted_change": -0.00032195619174412316
+      },
+      "Gait/substep_stance_recall": {
+        "samples": 1800,
+        "latest_iteration": 1799,
+        "latest": 0.9571234583854675,
+        "recent_mean": 0.9579149693250656,
+        "recent_std": 0.00048020708591297326,
+        "recent_iterations": [
+          1780,
+          1799
+        ],
+        "plateau_indicated": true,
+        "prior_mean": 0.9579939514398574,
+        "prior_iterations": [
+          1760,
+          1779
+        ],
+        "mean_change": -7.898211479184791e-05,
+        "relative_mean_change": -7.898211479184791e-05,
+        "recent_fitted_change": -0.0002249913556235177
+      },
+      "Gait/substep_swing_recall": {
+        "samples": 1800,
+        "latest_iteration": 1799,
+        "latest": 0.8084615468978882,
+        "recent_mean": 0.8082448005676269,
+        "recent_std": 0.0007235232429234819,
+        "recent_iterations": [
+          1780,
+          1799
+        ],
+        "plateau_indicated": true,
+        "prior_mean": 0.8088192999362945,
+        "prior_iterations": [
+          1760,
+          1779
+        ],
+        "mean_change": -0.0005744993686676025,
+        "relative_mean_change": -0.0005744993686676025,
+        "recent_fitted_change": -0.0012500558580671038
+      },
+      "Gait/stance_force_15_fraction": {
+        "samples": 1800,
+        "latest_iteration": 1799,
+        "latest": 0.9251779317855835,
+        "recent_mean": 0.9264210969209671,
+        "recent_std": 0.0006430040043363616,
+        "recent_iterations": [
+          1780,
+          1799
+        ],
+        "plateau_indicated": true,
+        "prior_mean": 0.9264752924442291,
+        "prior_iterations": [
+          1760,
+          1779
+        ],
+        "mean_change": -5.4195523262023926e-05,
+        "relative_mean_change": -5.4195523262023926e-05,
+        "recent_fitted_change": -0.0009020830903734479
+      },
+      "Gait/swing_force_2_fraction": {
+        "samples": 1800,
+        "latest_iteration": 1799,
+        "latest": 0.8022083044052124,
+        "recent_mean": 0.8017296135425568,
+        "recent_std": 0.0007702572475480063,
+        "recent_iterations": [
+          1780,
+          1799
+        ],
+        "plateau_indicated": true,
+        "prior_mean": 0.8023316949605942,
+        "prior_iterations": [
+          1760,
+          1779
+        ],
+        "mean_change": -0.0006020814180374146,
+        "relative_mean_change": -0.0006020814180374146,
+        "recent_fitted_change": -0.0012164013726370675
+      },
+      "Gait/substep_contact_margin_score": {
+        "samples": 1800,
+        "latest_iteration": 1799,
+        "latest": 0.8909422755241394,
+        "recent_mean": 0.8911440998315812,
+        "recent_std": 0.00041801904745191636,
+        "recent_iterations": [
+          1780,
+          1799
+        ],
+        "plateau_indicated": true,
+        "prior_mean": 0.891484335064888,
+        "prior_iterations": [
+          1760,
+          1779
+        ],
+        "mean_change": -0.00034023523330684036,
+        "relative_mean_change": -0.00034023523330684036,
+        "recent_fitted_change": -0.0006080108029501779
+      },
+      "Gait/foot_lateral_rmse": {
+        "samples": 1800,
+        "latest_iteration": 1799,
+        "latest": 0.029137078672647476,
+        "recent_mean": 0.0291757196187973,
+        "recent_std": 0.0003278609326063776,
+        "recent_iterations": [
+          1780,
+          1799
+        ],
+        "plateau_indicated": true,
+        "prior_mean": 0.0293987019918859,
+        "prior_iterations": [
+          1760,
+          1779
+        ],
+        "mean_change": -0.00022298237308859825,
+        "relative_mean_change": -0.00022298237308859825,
+        "recent_fitted_change": -0.00034514144062995915
+      },
+      "Gait/body_foot_lateral_rmse": {
+        "samples": 1800,
+        "latest_iteration": 1799,
+        "latest": 0.021602939814329147,
+        "recent_mean": 0.021522430051118136,
+        "recent_std": 0.00034661009099199266,
+        "recent_iterations": [
+          1780,
+          1799
+        ],
+        "plateau_indicated": true,
+        "prior_mean": 0.02160216411575675,
+        "prior_iterations": [
+          1760,
+          1779
+        ],
+        "mean_change": -7.973406463861535e-05,
+        "relative_mean_change": -7.973406463861535e-05,
+        "recent_fitted_change": -4.743092826434544e-07
+      },
+      "Gait/heading_rmse": {
+        "samples": 1800,
+        "latest_iteration": 1799,
+        "latest": 0.07885465770959854,
+        "recent_mean": 0.07782666981220246,
+        "recent_std": 0.0012759064753391568,
+        "recent_iterations": [
+          1780,
+          1799
+        ],
+        "plateau_indicated": true,
+        "prior_mean": 0.07952366434037686,
+        "prior_iterations": [
+          1760,
+          1779
+        ],
+        "mean_change": -0.0016969945281744003,
+        "relative_mean_change": -0.0016969945281744003,
+        "recent_fitted_change": -0.001987224817276001
+      },
+      "Gait/forward_speed": {
+        "samples": 1800,
+        "latest_iteration": 1799,
+        "latest": 0.3196808397769928,
+        "recent_mean": 0.3195666179060936,
+        "recent_std": 0.0015703619592218102,
+        "recent_iterations": [
+          1780,
+          1799
+        ],
+        "plateau_indicated": true,
+        "prior_mean": 0.3190163686871529,
+        "prior_iterations": [
+          1760,
+          1779
+        ],
+        "mean_change": 0.0005502492189407016,
+        "relative_mean_change": 0.0005502492189407016,
+        "recent_fitted_change": -0.0036239849669592724
+      },
+      "Gait/speed_mae": {
+        "samples": 1800,
+        "latest_iteration": 1799,
+        "latest": 0.039838165044784546,
+        "recent_mean": 0.039383601024746896,
+        "recent_std": 0.0002916457291457012,
+        "recent_iterations": [
+          1780,
+          1799
+        ],
+        "plateau_indicated": true,
+        "prior_mean": 0.03919304013252258,
+        "prior_iterations": [
+          1760,
+          1779
+        ],
+        "mean_change": 0.0001905608922243146,
+        "relative_mean_change": 0.0001905608922243146,
+        "recent_fitted_change": 7.117113896778651e-05
+      },
+      "Gait/lateral_rmse": {
+        "samples": 1800,
+        "latest_iteration": 1799,
+        "latest": 0.079982228577137,
+        "recent_mean": 0.07853676974773408,
+        "recent_std": 0.0014101726707952333,
+        "recent_iterations": [
+          1780,
+          1799
+        ],
+        "plateau_indicated": true,
+        "prior_mean": 0.07987217865884304,
+        "prior_iterations": [
+          1760,
+          1779
+        ],
+        "mean_change": -0.0013354089111089623,
+        "relative_mean_change": -0.0013354089111089623,
+        "recent_fitted_change": -0.0014047375747135709
+      },
+      "Gait/body_lateral_velocity_rmse": {
+        "samples": 1800,
+        "latest_iteration": 1799,
+        "latest": 0.05685877427458763,
+        "recent_mean": 0.056175296381115916,
+        "recent_std": 0.0012333843642804519,
+        "recent_iterations": [
+          1780,
+          1799
+        ],
+        "plateau_indicated": true,
+        "prior_mean": 0.056188689544796944,
+        "prior_iterations": [
+          1760,
+          1779
+        ],
+        "mean_change": -1.3393163681027498e-05,
+        "relative_mean_change": -1.3393163681027498e-05,
+        "recent_fitted_change": -0.00021071678825787134
+      },
+      "Gait/body_yaw_rate_rmse": {
+        "samples": 1800,
+        "latest_iteration": 1799,
+        "latest": 0.17983704805374146,
+        "recent_mean": 0.17992292270064353,
+        "recent_std": 0.001033591987725083,
+        "recent_iterations": [
+          1780,
+          1799
+        ],
+        "plateau_indicated": true,
+        "prior_mean": 0.18120925799012183,
+        "prior_iterations": [
+          1760,
+          1779
+        ],
+        "mean_change": -0.001286335289478302,
+        "relative_mean_change": -0.001286335289478302,
+        "recent_fitted_change": -0.00047705237354551044
+      }
+    }
+  },
+  "unavailable_metric_groups": [],
+  "warnings": [],
+  "limitation": "A reward plateau cannot establish convergence without held-out gait-command compliance and locomotion evaluation. This watcher does not tune rewards or modify training.",
+  "gait_metric_note": "Gait scalars are training-batch diagnostics, not held-out complete-cycle command compliance.",
+  "source": "/home/rml2/Documents/thomas_practice/beam_walking_RL/results/narrow_beam_tight3_center10_from_tight2_3072_20260912",
+  "process": {
+    "pid": null,
+    "process_state": "not_checked",
+    "exit_code": null,
+    "error_lines": [],
+    "note": "Process presence and log errors do not establish successful completion; exit status is unavailable."
+  },
+  "report_kind": "initial",
+  "report_interval_seconds": 3600.0,
+  "final_reason": null
+}

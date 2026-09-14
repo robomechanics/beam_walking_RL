@@ -1,0 +1,10 @@
+Raw archives left in results/ (regenerate per_trial.csv with scripts/collect_paper_data.py):
+trial_s0.060_d0.500_v0.300_trot_p0.48_nominal.npz	24500019 bytes
+trial_s0.060_d0.625_v0.300_trot_p0.48_nominal.npz	23287692 bytes
+trial_s0.060_d0.750_v0.300_trot_p0.48_nominal.npz	22867869 bytes
+trial_s0.080_d0.500_v0.300_trot_p0.48_nominal.npz	23187283 bytes
+trial_s0.080_d0.625_v0.300_trot_p0.48_nominal.npz	22702852 bytes
+trial_s0.080_d0.750_v0.300_trot_p0.48_nominal.npz	23072471 bytes
+trial_s0.100_d0.500_v0.300_trot_p0.48_nominal.npz	23328229 bytes
+trial_s0.100_d0.625_v0.300_trot_p0.48_nominal.npz	23089130 bytes
+trial_s0.100_d0.750_v0.300_trot_p0.48_nominal.npz	22622588 bytes

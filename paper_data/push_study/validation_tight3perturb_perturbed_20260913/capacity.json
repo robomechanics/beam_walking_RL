@@ -1,0 +1,23 @@
+{
+  "checked_at": "2026-09-13T07:50:26.019995+00:00",
+  "checker_pid": 3095467,
+  "gpu_index": 0,
+  "gpu": "NVIDIA GeForce RTX 5070 Ti",
+  "total_mib": 16303,
+  "used_mib": 572,
+  "free_mib": 15247,
+  "utilization_percent": 0,
+  "temperature_c": 51,
+  "required_free_mib": 4096,
+  "available_system_mib": 19740,
+  "required_system_mib": 8320,
+  "compute_processes": [],
+  "allowed_rustdesk_processes": [],
+  "blocked_compute_processes": [],
+  "other_compute_processes": [],
+  "shared_gpu_authorized": true,
+  "exclusive_compute_device": true,
+  "rustdesk_exception_applied": false,
+  "rustdesk_process_limit_mib": 512,
+  "rustdesk_total_limit_mib": 512
+}

@@ -1,0 +1,44 @@
+{
+  "status": "suppressed_failed_validity_or_coverage_gate",
+  "qualitative_alignment_pass": false,
+  "minimum_independent_policies_for_claim": 5,
+  "primary_metric": "chi_orbital_augmented_median",
+  "primary_metric_scope": "46D augmented orbital return map with neutral global x/y removed",
+  "unquotiented_full_48d_is_diagnostic": true,
+  "translation_reduced_learned_controller_analogue": true,
+  "interpretation": "qualitative gait-parameter association alignment only",
+  "equivalence_margin_source": "preregistered study operationalization; not supplied by the paper",
+  "not_tested": [
+    "external_impulse_rejection",
+    "beam_traversal"
+  ],
+  "equivalence_ratio_margin": 0.2,
+  "planned_conditions": 80,
+  "valid_conditions": 0,
+  "global_condition_valid_rate": 0.0,
+  "confirmatory_grid": true,
+  "global_90_percent_gate_pass": false,
+  "contrast_coverage": {
+    "duty_factor": {
+      "expected_pairs": 20,
+      "valid_pairs": 0,
+      "complete": false
+    },
+    "narrow_width": {
+      "expected_pairs": 16,
+      "valid_pairs": 0,
+      "complete": false
+    },
+    "speed": {
+      "expected_pairs": 20,
+      "valid_pairs": 0,
+      "complete": false
+    },
+    "gait": {
+      "expected_pairs": 20,
+      "valid_pairs": 0,
+      "complete": false
+    }
+  },
+  "claim_values_released": false
+}

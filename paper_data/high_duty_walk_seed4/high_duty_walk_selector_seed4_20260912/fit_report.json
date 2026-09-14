@@ -1,0 +1,9 @@
+{
+  "schema": "high_duty_walk_selector_fit_v1",
+  "contexts": 20,
+  "rejected_contexts": 0,
+  "final_training_cross_entropy": 3.844492312055081e-06,
+  "resubstitution_label_fit_rmse": 0.0,
+  "fresh_selector_rollout_validation_required": true,
+  "exploratory": false
+}

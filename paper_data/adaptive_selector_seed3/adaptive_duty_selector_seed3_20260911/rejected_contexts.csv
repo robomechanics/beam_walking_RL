@@ -1,0 +1,2 @@
+step_width,speed,period,gait,reason
+0.1,0.25,0.48,walk,no_candidate_passed_compliance_and_energy_gate

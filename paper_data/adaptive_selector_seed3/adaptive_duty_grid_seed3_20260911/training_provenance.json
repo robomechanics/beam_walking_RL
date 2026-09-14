@@ -1,0 +1,53 @@
+{
+  "schema": "adaptive_duty_training_v1",
+  "argv": [
+    "scripts/adaptive_duty_experiment.py",
+    "train",
+    "--num_envs",
+    "3072",
+    "--iterations",
+    "1800",
+    "--seed",
+    "3",
+    "--output",
+    "results/adaptive_duty_seed3_3072_20260911",
+    "--headless"
+  ],
+  "mode": "train",
+  "seed": 3,
+  "terrain": "flat_ground",
+  "terrain_width_input": false,
+  "step_width_is_commanded_foot_separation": true,
+  "walk_and_trot_duty_range": [
+    0.5,
+    0.75
+  ],
+  "balanced_discrete_duty_levels": [
+    0.5,
+    0.55,
+    0.6,
+    0.65,
+    0.7,
+    0.75
+  ],
+  "minimum_requested_swing_s": 0.1,
+  "fresh_training": true,
+  "primary_training_protocol": true,
+  "development_warm_start": false,
+  "warm_start_checkpoint": null,
+  "warm_start_checkpoint_sha256": null,
+  "task_sha256": "4b28fa708e8bc8329928dbfb7fec241572a0c62b0507053b34d2aa806ab204fe",
+  "training_source_sha256": "5a892458664a4431fcc407cb8da660a94031787c5a368f4933100eddba484ac2",
+  "training_lineage_id": "fc9a9c1cba31438a5485599227d294e7cbf348b221f919adbaeab544dc2394f3",
+  "training_num_envs": 3072,
+  "training_iterations_requested": 1800,
+  "checkpoint_selection_rule": "final_requested_iteration",
+  "watcher_enabled": true,
+  "versions": {
+    "torch": "2.7.0+cu128",
+    "isaaclab": "0.42.25",
+    "isaacsim": "5.1.0.0",
+    "rsl-rl-lib": "3.0.1"
+  },
+  "gpu": "NVIDIA GeForce RTX 5070 Ti"
+}

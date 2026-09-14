@@ -1,0 +1,54 @@
+{
+  "checked_at": "2026-09-13T07:20:29.883605+00:00",
+  "checker_pid": 3035607,
+  "gpu_index": 0,
+  "gpu": "NVIDIA GeForce RTX 5070 Ti",
+  "total_mib": 16303,
+  "used_mib": 5097,
+  "free_mib": 10722,
+  "utilization_percent": 60,
+  "temperature_c": 56,
+  "required_free_mib": 4096,
+  "available_system_mib": 13086,
+  "required_system_mib": 8320,
+  "compute_processes": [
+    {
+      "pid": 1293329,
+      "owner": "rml2",
+      "process_name": "/usr/share/rustdesk/rustdesk",
+      "command": "/usr/share/rustdesk/rustdesk --server",
+      "used_gpu_memory_mib": 279
+    },
+    {
+      "pid": 3015790,
+      "owner": "rml2",
+      "process_name": "/home/rml2/anaconda3/envs/isaaclab/bin/python",
+      "command": "/home/rml2/anaconda3/envs/isaaclab/bin/python scripts/beam_experiment.py train --deployment_dr --initialize_from results/narrow_beam_tight3_center10_from_tight2_3072_20260912/model_1799.pt --num_envs 3072 --iterations 1800 --seed 3 --headless --min_step_width 0.05 --width_tolerance 0.02 --lateral_heading_gain 1.0 --heading_cost_weight 3.0 --heading_cost_on_observation --centering_scale 0.05 --centering_weight 10.0 --perturbation --output results/narrow_beam_tight3_perturb_from_tight3_3072_20260913",
+      "used_gpu_memory_mib": 4023
+    }
+  ],
+  "allowed_rustdesk_processes": [
+    {
+      "pid": 1293329,
+      "owner": "rml2",
+      "process_name": "/usr/share/rustdesk/rustdesk",
+      "command": "/usr/share/rustdesk/rustdesk --server",
+      "used_gpu_memory_mib": 279
+    }
+  ],
+  "blocked_compute_processes": [],
+  "other_compute_processes": [
+    {
+      "pid": 3015790,
+      "owner": "rml2",
+      "process_name": "/home/rml2/anaconda3/envs/isaaclab/bin/python",
+      "command": "/home/rml2/anaconda3/envs/isaaclab/bin/python scripts/beam_experiment.py train --deployment_dr --initialize_from results/narrow_beam_tight3_center10_from_tight2_3072_20260912/model_1799.pt --num_envs 3072 --iterations 1800 --seed 3 --headless --min_step_width 0.05 --width_tolerance 0.02 --lateral_heading_gain 1.0 --heading_cost_weight 3.0 --heading_cost_on_observation --centering_scale 0.05 --centering_weight 10.0 --perturbation --output results/narrow_beam_tight3_perturb_from_tight3_3072_20260913",
+      "used_gpu_memory_mib": 4023
+    }
+  ],
+  "shared_gpu_authorized": true,
+  "exclusive_compute_device": false,
+  "rustdesk_exception_applied": true,
+  "rustdesk_process_limit_mib": 512,
+  "rustdesk_total_limit_mib": 512
+}

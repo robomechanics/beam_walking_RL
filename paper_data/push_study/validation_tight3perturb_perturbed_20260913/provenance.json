@@ -1,0 +1,52 @@
+{
+  "mode": "evaluate",
+  "split": "validation",
+  "seed": 10000,
+  "argv": [
+    "scripts/evaluate_policy.py",
+    "--checkpoint",
+    "results/narrow_beam_tight3_perturb_from_tight3_3072_20260913/model_1799.pt",
+    "--output",
+    "results/validation_tight3perturb_perturbed_20260913",
+    "--num_envs",
+    "64",
+    "--step_widths",
+    "0.05",
+    "0.06",
+    "0.08",
+    "0.10",
+    "--dfs",
+    "0.5",
+    "0.625",
+    "0.75",
+    "--gait",
+    "trot",
+    "--deployment_profile",
+    "nominal",
+    "--headless",
+    "--perturbation"
+  ],
+  "terrain": "flat_ground",
+  "external_pushes": false,
+  "condition_reset_seed": 3010000,
+  "training_provenance": "/home/rml2/Documents/thomas_practice/beam_walking_RL/results/narrow_beam_tight3_perturb_from_tight3_3072_20260913/provenance.json",
+  "training_provenance_file": "training_provenance.json",
+  "training_provenance_sha256": "ad455fa30696e0fc4e6ce3f1e6e988e2deaa6d24b7969062c4315a3543693d5e",
+  "training_source_sha256": "9136731975bac38df79071505fcb3491c078927f45741e8594226d8194cb81b2",
+  "task_sha256": "40272cb456abcb948e4d0a195b1c828a590dabb2b7eb032ee2c85e5419e49938",
+  "evaluator_sha256": "1bc2fcd561bafb7b53e9124dd37962565a466ae637721c85448f9cab2a695334",
+  "checkpoint": "/home/rml2/Documents/thomas_practice/beam_walking_RL/results/narrow_beam_tight3_perturb_from_tight3_3072_20260913/model_1799.pt",
+  "checkpoint_sha256": "29c4b63859c07aaa32756e8ef27cc68629425c6457dbc6bfd53ce108ee28d3bc",
+  "checkpoint_iteration": 1799,
+  "training_source_check": {
+    "verified": true,
+    "against": "live_tree",
+    "drifted_launch_scripts": []
+  },
+  "versions": {
+    "torch": "2.7.0+cu128",
+    "isaaclab": "0.42.25",
+    "isaacsim": "5.1.0.0",
+    "rsl-rl-lib": "3.0.1"
+  }
+}

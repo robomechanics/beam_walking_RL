@@ -1,0 +1,29 @@
+{
+  "schema": "high_duty_walk_selector_validation_complete_v1",
+  "manifest_file": "selector_validation_manifest.json",
+  "manifest_sha256": "de0af4c067670f3bee01e593aa6de97d8784d90f800bf38e1defa5154aa460aa",
+  "trial_csv_file": "selector_validation_trials.csv",
+  "trial_csv_sha256": "0112dee1ecd118331f886dec0fcf32529fa35db0912999871fd8623523a5b9b2",
+  "archive_sha256": {
+    "high_duty_walk_selector_walk_v0.250_p0.48_w0.100_d0.800.npz": "e12654a7e15067a0d12c6c640e19cda10b1b6d35a7c4ede6451ef6d314a1c207",
+    "high_duty_walk_selector_walk_v0.300_p0.48_w0.100_d0.800.npz": "3d9757a381e0bc28f1b79583e16b4a223904a1b472471ae9ab8539e62efe1532",
+    "high_duty_walk_selector_walk_v0.350_p0.48_w0.100_d0.800.npz": "cfd4fcb47d6acf0b487bc502e1f57c7f2dd7cebb624f0c58cbf51f29f24f2132",
+    "high_duty_walk_selector_walk_v0.400_p0.48_w0.100_d0.800.npz": "595a5d9b072bd800d6e90b036176d7ff1f459581dcec7e9a7b35b9b2bc293157",
+    "high_duty_walk_selector_walk_v0.250_p0.48_w0.200_d0.800.npz": "b2d2c6d19e36df0230096ba14e8afc71cedb3c58e91f4bb56b293c52ce3f5d90",
+    "high_duty_walk_selector_walk_v0.300_p0.48_w0.200_d0.800.npz": "c822cfc84e1767f285765760bb203c4f044191c1635344bdc7635ceff3c91e4c",
+    "high_duty_walk_selector_walk_v0.350_p0.48_w0.200_d0.800.npz": "340a4200c71bc84eced57ccc5d338b1699d1722925153755630e840f1f77caa6",
+    "high_duty_walk_selector_walk_v0.400_p0.48_w0.200_d0.800.npz": "aaf7522663e6d1d420bc8bc76a0ed54ab70bd040dee49af78e3ad1f08befdaa5",
+    "high_duty_walk_selector_walk_v0.250_p0.48_w0.300_d0.800.npz": "79866f97b7c4e9ee706bb9680a850b8cbf451c123bedaa1fb33bc5262c97fef4",
+    "high_duty_walk_selector_walk_v0.300_p0.48_w0.300_d0.800.npz": "a09b41b728da44401a80540dedb870e6c153b11a0109b63ae03cf5c49d91b92e",
+    "high_duty_walk_selector_walk_v0.350_p0.48_w0.300_d0.800.npz": "b5fb8965af6212a003496bfba9583488018a0a161f98b9ba6d779a807514b234",
+    "high_duty_walk_selector_walk_v0.400_p0.48_w0.300_d0.800.npz": "80c74070a0b68b6c50ae752606386ca00ac909308e853ba595b0a85fb3015202",
+    "high_duty_walk_selector_walk_v0.250_p0.48_w0.400_d0.800.npz": "b4fb4f7bfa99b2b9782acf9d4b6b3e695e898214962f591d73a8cc4ac479f99a",
+    "high_duty_walk_selector_walk_v0.300_p0.48_w0.400_d0.800.npz": "7799c8b214a0275c6639ef624f9769efd76f4461be1092d300037bb88fce8b61",
+    "high_duty_walk_selector_walk_v0.350_p0.48_w0.400_d0.800.npz": "670c21436ca7ee807c30cb1ffaafe416824d267e42ab0b2896d6059d76f68cc7",
+    "high_duty_walk_selector_walk_v0.400_p0.48_w0.400_d0.800.npz": "1621a1bd734726c7e91681da20725243ea76499c250df78040491575f2c47e05",
+    "high_duty_walk_selector_walk_v0.250_p0.48_w0.500_d0.800.npz": "f6e5ae207cc85bf73eed1a157978e05834f29581f7fdbc2283657e87eee9b69b",
+    "high_duty_walk_selector_walk_v0.300_p0.48_w0.500_d0.800.npz": "32c34d5caa3ad0611cbfdbcf313a01edd4d9ad87e136b25ff45a394490a0bab7",
+    "high_duty_walk_selector_walk_v0.350_p0.48_w0.500_d0.800.npz": "a9bf7e67048d86d1d1e3a1964a3d99f70050154a12f89c35a7178f425ca91849",
+    "high_duty_walk_selector_walk_v0.400_p0.48_w0.500_d0.800.npz": "a123729ee45444dc0041bcb6bc230ec51e22a5ddf2ba780e601fff3ceae0cd36"
+  }
+}

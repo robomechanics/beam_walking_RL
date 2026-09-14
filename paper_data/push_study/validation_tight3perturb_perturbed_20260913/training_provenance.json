@@ -1,0 +1,187 @@
+{
+  "argv": [
+    "scripts/beam_experiment.py",
+    "train",
+    "--deployment_dr",
+    "--initialize_from",
+    "results/narrow_beam_tight3_center10_from_tight2_3072_20260912/model_1799.pt",
+    "--num_envs",
+    "3072",
+    "--iterations",
+    "1800",
+    "--seed",
+    "3",
+    "--headless",
+    "--min_step_width",
+    "0.05",
+    "--width_tolerance",
+    "0.02",
+    "--lateral_heading_gain",
+    "1.0",
+    "--heading_cost_weight",
+    "3.0",
+    "--heading_cost_on_observation",
+    "--centering_scale",
+    "0.05",
+    "--centering_weight",
+    "10.0",
+    "--perturbation",
+    "--output",
+    "results/narrow_beam_tight3_perturb_from_tight3_3072_20260913"
+  ],
+  "seed": 3,
+  "mode": "train",
+  "split": "validation",
+  "step_width_frame": "body",
+  "git_revision": "cb6b4712971a845d55ca5b697f1ae06107c53aee",
+  "versions": {
+    "torch": "2.7.0+cu128",
+    "isaaclab": "0.42.25",
+    "isaacsim": "5.1.0.0",
+    "rsl-rl-lib": "3.0.1"
+  },
+  "gpu": "NVIDIA GeForce RTX 5070 Ti",
+  "task_sha256": "40272cb456abcb948e4d0a195b1c828a590dabb2b7eb032ee2c85e5419e49938",
+  "training_source_sha256": "9136731975bac38df79071505fcb3491c078927f45741e8594226d8194cb81b2",
+  "training_num_envs": 3072,
+  "training_iterations_requested": 1800,
+  "stance_start_probability": 0.1,
+  "checkpoint_selection_rule": "final_requested_iteration",
+  "watcher_enabled": true,
+  "deployment_domain_randomization": true,
+  "deployment_profile": {
+    "schema": "go2_deployment_dr_v1",
+    "motor_stiffness_scale": [
+      0.6,
+      1.4
+    ],
+    "motor_damping_scale": [
+      0.5,
+      1.5
+    ],
+    "base_mass_scale": [
+      0.8,
+      1.2
+    ],
+    "base_com_offset_m": {
+      "x": [
+        -0.04,
+        0.04
+      ],
+      "y": [
+        -0.03,
+        0.03
+      ],
+      "z": [
+        -0.02,
+        0.02
+      ]
+    },
+    "static_friction": [
+      0.4,
+      1.5
+    ],
+    "dynamic_friction": [
+      0.3,
+      1.2
+    ],
+    "motor_strength_scale": [
+      0.7,
+      1.1
+    ],
+    "joint_friction": [
+      0.0,
+      0.25
+    ],
+    "joint_armature": [
+      0.0,
+      0.02
+    ],
+    "actuator_delay_physics_steps": [
+      0,
+      4
+    ],
+    "actuator_delay_s": [
+      0.0,
+      0.02
+    ],
+    "observation_corruption": "isaaclab_go2_stock_bounded_uniform",
+    "external_pushes": false,
+    "terrain": "flat_ground",
+    "policy_rate_hz": 50,
+    "solver_velocity_iterations": 2,
+    "external_forces_every_solver_iteration": true,
+    "training_num_envs": 3072,
+    "training_iterations": 1800,
+    "stance_start_probability": 0.1,
+    "reset_calibration_stiffness": 80.0,
+    "reset_calibration_damping": 3.0,
+    "reset_calibration_quiet_steps": 20,
+    "reset_calibration_max_steps": 4000,
+    "reset_calibration_gains_restored_before_rollout": true
+  },
+  "external_pushes": true,
+  "perturbation": {
+    "schema": "ramped_base_wrench_v1",
+    "frame": "world",
+    "body": "base",
+    "envelope": "start + (1 - start) * clip(progress, 0, 1)",
+    "progress": "episode_time_s / ramp_time_s",
+    "sampling": "piecewise_constant_random_wrench",
+    "max_force_n": 25.0,
+    "max_torque_nm": 3.0,
+    "start_fraction": 0.1,
+    "ramp_mode": "time",
+    "ramp_time_s": 10.0,
+    "ramp_distance_m": 3.0,
+    "hold_min_s": 0.1,
+    "hold_max_s": 0.4,
+    "vertical_force_fraction": 0.25
+  },
+  "narrow_beam_extension": {
+    "min_step_width": 0.05,
+    "width_tolerance_sigma_m": 0.02,
+    "lateral_heading_gain_rad_per_m": 1.0,
+    "heading_cost_weight": 3.0,
+    "heading_cost_on_observation": true,
+    "centering_scale_m": 0.05,
+    "centering_weight": 10.0,
+    "observation_normalization_range": [
+      0.1,
+      0.5
+    ]
+  },
+  "base_training_source_sha256": "807d6e3b973d2ec947b4348098eafb0d06fe07e77624ffa3da2ac78f97db6e56",
+  "deployment_profile_sha256": "3e976569a86eca43b5f49f11fcdb2f0b1d1d357d6c5ff6ff6250ab2420d193e0",
+  "fresh_training": false,
+  "training_lineage_id": "aa9415dd1d9d2fe33262edaac66c545d9a831e6b9aa3f7ea7305b36c549fd079",
+  "training_kind": "deployment_finetune",
+  "chained_from_parent": true,
+  "parent_task_sha256": "40272cb456abcb948e4d0a195b1c828a590dabb2b7eb032ee2c85e5419e49938",
+  "current_task_sha256": "40272cb456abcb948e4d0a195b1c828a590dabb2b7eb032ee2c85e5419e49938",
+  "task_changed_from_parent": false,
+  "parent_checkpoint": "/home/rml2/Documents/thomas_practice/beam_walking_RL/results/narrow_beam_tight3_center10_from_tight2_3072_20260912/model_1799.pt",
+  "parent_checkpoint_sha256": "65371231bd0eea19c356da2cabf6a34b22a4e1e55756a08de38491c181730c49",
+  "root_parent_checkpoint_sha256": "ef5dae663b9650a3197e589b406101d4a450282e1e358c2af895d0505912127a",
+  "parent_checkpoint_iteration": 1799,
+  "parent_training_seed": 3,
+  "root_parent_training_seed": 2,
+  "parent_provenance_sha256": "216b343582d795c0bce7018a243decb5ed2c55b42c14f8b37383f73748f268b6",
+  "parent_narrow_beam_extension": {
+    "min_step_width": 0.05,
+    "width_tolerance_sigma_m": 0.02,
+    "lateral_heading_gain_rad_per_m": 1.0,
+    "heading_cost_weight": 3.0,
+    "heading_cost_on_observation": true,
+    "centering_scale_m": 0.05,
+    "centering_weight": 10.0,
+    "observation_normalization_range": [
+      0.1,
+      0.5
+    ]
+  },
+  "parent_common_step_counter": 345600,
+  "optimizer_initialization": "fresh_for_dr",
+  "updates_counted_from": "start_of_dr_finetuning",
+  "initial_weights_match_parent": true
+}

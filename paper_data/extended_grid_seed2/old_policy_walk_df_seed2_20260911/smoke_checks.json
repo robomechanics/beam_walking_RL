@@ -1,0 +1,10 @@
+{
+  "instrumentation_pass": true,
+  "matched_conditions": 6,
+  "trials": 192,
+  "trained_reference_compliance": {
+    "0.625": 1.0,
+    "0.75": 1.0
+  },
+  "unseen_walk_performance_is_not_a_smoke_gate": true
+}

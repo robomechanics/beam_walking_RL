@@ -1,0 +1,2018 @@
+{
+  "schema": "adaptive_duty_grid_v1",
+  "scientific_scope": "flat_ground_commanded_step_width",
+  "terrain": "flat_ground",
+  "terrain_width_input": false,
+  "objective": "minimum positive mechanical CoT among candidates passing compliance gates",
+  "command_gate_limits_source": "experiment.stability.FROZEN_GATE_LIMITS",
+  "topology_definition": "schedule_centered_unique_circular_events_v1",
+  "topology_minimum": 0.9,
+  "control_dt_s": 0.02,
+  "physics_dt_s": 0.005,
+  "trials_per_candidate": 32,
+  "settle_cycles": 12,
+  "measurement_cycles": 4,
+  "stance_start_probability": 0.1,
+  "stance_start_sampling": "seeded_independent_bernoulli",
+  "stance_start_realized_count": 3,
+  "stance_start_realized": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    1,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "automatic_support_failure_termination": false,
+  "automatic_crossing_termination": false,
+  "conditions": [
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.5,
+      "filename": "grid_trot_v0.250_p0.48_w0.100_d0.500.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.55,
+      "filename": "grid_trot_v0.250_p0.48_w0.100_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.6,
+      "filename": "grid_trot_v0.250_p0.48_w0.100_d0.600.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.65,
+      "filename": "grid_trot_v0.250_p0.48_w0.100_d0.650.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.7,
+      "filename": "grid_trot_v0.250_p0.48_w0.100_d0.700.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.75,
+      "filename": "grid_trot_v0.250_p0.48_w0.100_d0.750.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.5,
+      "filename": "grid_trot_v0.250_p0.48_w0.200_d0.500.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.55,
+      "filename": "grid_trot_v0.250_p0.48_w0.200_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.6,
+      "filename": "grid_trot_v0.250_p0.48_w0.200_d0.600.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.65,
+      "filename": "grid_trot_v0.250_p0.48_w0.200_d0.650.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.7,
+      "filename": "grid_trot_v0.250_p0.48_w0.200_d0.700.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.75,
+      "filename": "grid_trot_v0.250_p0.48_w0.200_d0.750.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.5,
+      "filename": "grid_trot_v0.250_p0.48_w0.300_d0.500.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.55,
+      "filename": "grid_trot_v0.250_p0.48_w0.300_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.6,
+      "filename": "grid_trot_v0.250_p0.48_w0.300_d0.600.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.65,
+      "filename": "grid_trot_v0.250_p0.48_w0.300_d0.650.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.7,
+      "filename": "grid_trot_v0.250_p0.48_w0.300_d0.700.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.75,
+      "filename": "grid_trot_v0.250_p0.48_w0.300_d0.750.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.4,
+      "command_df": 0.5,
+      "filename": "grid_trot_v0.250_p0.48_w0.400_d0.500.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.4,
+      "command_df": 0.55,
+      "filename": "grid_trot_v0.250_p0.48_w0.400_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.4,
+      "command_df": 0.6,
+      "filename": "grid_trot_v0.250_p0.48_w0.400_d0.600.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.4,
+      "command_df": 0.65,
+      "filename": "grid_trot_v0.250_p0.48_w0.400_d0.650.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.4,
+      "command_df": 0.7,
+      "filename": "grid_trot_v0.250_p0.48_w0.400_d0.700.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.4,
+      "command_df": 0.75,
+      "filename": "grid_trot_v0.250_p0.48_w0.400_d0.750.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.5,
+      "command_df": 0.5,
+      "filename": "grid_trot_v0.250_p0.48_w0.500_d0.500.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.5,
+      "command_df": 0.55,
+      "filename": "grid_trot_v0.250_p0.48_w0.500_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.5,
+      "command_df": 0.6,
+      "filename": "grid_trot_v0.250_p0.48_w0.500_d0.600.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.5,
+      "command_df": 0.65,
+      "filename": "grid_trot_v0.250_p0.48_w0.500_d0.650.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.5,
+      "command_df": 0.7,
+      "filename": "grid_trot_v0.250_p0.48_w0.500_d0.700.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.5,
+      "command_df": 0.75,
+      "filename": "grid_trot_v0.250_p0.48_w0.500_d0.750.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.5,
+      "filename": "grid_trot_v0.300_p0.48_w0.100_d0.500.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.55,
+      "filename": "grid_trot_v0.300_p0.48_w0.100_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.6,
+      "filename": "grid_trot_v0.300_p0.48_w0.100_d0.600.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.65,
+      "filename": "grid_trot_v0.300_p0.48_w0.100_d0.650.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.7,
+      "filename": "grid_trot_v0.300_p0.48_w0.100_d0.700.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.75,
+      "filename": "grid_trot_v0.300_p0.48_w0.100_d0.750.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.5,
+      "filename": "grid_trot_v0.300_p0.48_w0.200_d0.500.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.55,
+      "filename": "grid_trot_v0.300_p0.48_w0.200_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.6,
+      "filename": "grid_trot_v0.300_p0.48_w0.200_d0.600.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.65,
+      "filename": "grid_trot_v0.300_p0.48_w0.200_d0.650.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.7,
+      "filename": "grid_trot_v0.300_p0.48_w0.200_d0.700.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.75,
+      "filename": "grid_trot_v0.300_p0.48_w0.200_d0.750.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.5,
+      "filename": "grid_trot_v0.300_p0.48_w0.300_d0.500.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.55,
+      "filename": "grid_trot_v0.300_p0.48_w0.300_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.6,
+      "filename": "grid_trot_v0.300_p0.48_w0.300_d0.600.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.65,
+      "filename": "grid_trot_v0.300_p0.48_w0.300_d0.650.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.7,
+      "filename": "grid_trot_v0.300_p0.48_w0.300_d0.700.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.75,
+      "filename": "grid_trot_v0.300_p0.48_w0.300_d0.750.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.4,
+      "command_df": 0.5,
+      "filename": "grid_trot_v0.300_p0.48_w0.400_d0.500.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.4,
+      "command_df": 0.55,
+      "filename": "grid_trot_v0.300_p0.48_w0.400_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.4,
+      "command_df": 0.6,
+      "filename": "grid_trot_v0.300_p0.48_w0.400_d0.600.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.4,
+      "command_df": 0.65,
+      "filename": "grid_trot_v0.300_p0.48_w0.400_d0.650.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.4,
+      "command_df": 0.7,
+      "filename": "grid_trot_v0.300_p0.48_w0.400_d0.700.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.4,
+      "command_df": 0.75,
+      "filename": "grid_trot_v0.300_p0.48_w0.400_d0.750.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.5,
+      "command_df": 0.5,
+      "filename": "grid_trot_v0.300_p0.48_w0.500_d0.500.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.5,
+      "command_df": 0.55,
+      "filename": "grid_trot_v0.300_p0.48_w0.500_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.5,
+      "command_df": 0.6,
+      "filename": "grid_trot_v0.300_p0.48_w0.500_d0.600.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.5,
+      "command_df": 0.65,
+      "filename": "grid_trot_v0.300_p0.48_w0.500_d0.650.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.5,
+      "command_df": 0.7,
+      "filename": "grid_trot_v0.300_p0.48_w0.500_d0.700.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.5,
+      "command_df": 0.75,
+      "filename": "grid_trot_v0.300_p0.48_w0.500_d0.750.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.5,
+      "filename": "grid_trot_v0.350_p0.48_w0.100_d0.500.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.55,
+      "filename": "grid_trot_v0.350_p0.48_w0.100_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.6,
+      "filename": "grid_trot_v0.350_p0.48_w0.100_d0.600.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.65,
+      "filename": "grid_trot_v0.350_p0.48_w0.100_d0.650.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.7,
+      "filename": "grid_trot_v0.350_p0.48_w0.100_d0.700.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.75,
+      "filename": "grid_trot_v0.350_p0.48_w0.100_d0.750.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.5,
+      "filename": "grid_trot_v0.350_p0.48_w0.200_d0.500.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.55,
+      "filename": "grid_trot_v0.350_p0.48_w0.200_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.6,
+      "filename": "grid_trot_v0.350_p0.48_w0.200_d0.600.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.65,
+      "filename": "grid_trot_v0.350_p0.48_w0.200_d0.650.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.7,
+      "filename": "grid_trot_v0.350_p0.48_w0.200_d0.700.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.75,
+      "filename": "grid_trot_v0.350_p0.48_w0.200_d0.750.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.5,
+      "filename": "grid_trot_v0.350_p0.48_w0.300_d0.500.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.55,
+      "filename": "grid_trot_v0.350_p0.48_w0.300_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.6,
+      "filename": "grid_trot_v0.350_p0.48_w0.300_d0.600.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.65,
+      "filename": "grid_trot_v0.350_p0.48_w0.300_d0.650.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.7,
+      "filename": "grid_trot_v0.350_p0.48_w0.300_d0.700.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.75,
+      "filename": "grid_trot_v0.350_p0.48_w0.300_d0.750.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.4,
+      "command_df": 0.5,
+      "filename": "grid_trot_v0.350_p0.48_w0.400_d0.500.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.4,
+      "command_df": 0.55,
+      "filename": "grid_trot_v0.350_p0.48_w0.400_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.4,
+      "command_df": 0.6,
+      "filename": "grid_trot_v0.350_p0.48_w0.400_d0.600.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.4,
+      "command_df": 0.65,
+      "filename": "grid_trot_v0.350_p0.48_w0.400_d0.650.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.4,
+      "command_df": 0.7,
+      "filename": "grid_trot_v0.350_p0.48_w0.400_d0.700.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.4,
+      "command_df": 0.75,
+      "filename": "grid_trot_v0.350_p0.48_w0.400_d0.750.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.5,
+      "command_df": 0.5,
+      "filename": "grid_trot_v0.350_p0.48_w0.500_d0.500.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.5,
+      "command_df": 0.55,
+      "filename": "grid_trot_v0.350_p0.48_w0.500_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.5,
+      "command_df": 0.6,
+      "filename": "grid_trot_v0.350_p0.48_w0.500_d0.600.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.5,
+      "command_df": 0.65,
+      "filename": "grid_trot_v0.350_p0.48_w0.500_d0.650.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.5,
+      "command_df": 0.7,
+      "filename": "grid_trot_v0.350_p0.48_w0.500_d0.700.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.5,
+      "command_df": 0.75,
+      "filename": "grid_trot_v0.350_p0.48_w0.500_d0.750.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.5,
+      "filename": "grid_trot_v0.400_p0.48_w0.100_d0.500.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.55,
+      "filename": "grid_trot_v0.400_p0.48_w0.100_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.6,
+      "filename": "grid_trot_v0.400_p0.48_w0.100_d0.600.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.65,
+      "filename": "grid_trot_v0.400_p0.48_w0.100_d0.650.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.7,
+      "filename": "grid_trot_v0.400_p0.48_w0.100_d0.700.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.75,
+      "filename": "grid_trot_v0.400_p0.48_w0.100_d0.750.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.5,
+      "filename": "grid_trot_v0.400_p0.48_w0.200_d0.500.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.55,
+      "filename": "grid_trot_v0.400_p0.48_w0.200_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.6,
+      "filename": "grid_trot_v0.400_p0.48_w0.200_d0.600.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.65,
+      "filename": "grid_trot_v0.400_p0.48_w0.200_d0.650.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.7,
+      "filename": "grid_trot_v0.400_p0.48_w0.200_d0.700.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.75,
+      "filename": "grid_trot_v0.400_p0.48_w0.200_d0.750.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.5,
+      "filename": "grid_trot_v0.400_p0.48_w0.300_d0.500.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.55,
+      "filename": "grid_trot_v0.400_p0.48_w0.300_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.6,
+      "filename": "grid_trot_v0.400_p0.48_w0.300_d0.600.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.65,
+      "filename": "grid_trot_v0.400_p0.48_w0.300_d0.650.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.7,
+      "filename": "grid_trot_v0.400_p0.48_w0.300_d0.700.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.75,
+      "filename": "grid_trot_v0.400_p0.48_w0.300_d0.750.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.4,
+      "command_df": 0.5,
+      "filename": "grid_trot_v0.400_p0.48_w0.400_d0.500.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.4,
+      "command_df": 0.55,
+      "filename": "grid_trot_v0.400_p0.48_w0.400_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.4,
+      "command_df": 0.6,
+      "filename": "grid_trot_v0.400_p0.48_w0.400_d0.600.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.4,
+      "command_df": 0.65,
+      "filename": "grid_trot_v0.400_p0.48_w0.400_d0.650.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.4,
+      "command_df": 0.7,
+      "filename": "grid_trot_v0.400_p0.48_w0.400_d0.700.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.4,
+      "command_df": 0.75,
+      "filename": "grid_trot_v0.400_p0.48_w0.400_d0.750.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.5,
+      "command_df": 0.5,
+      "filename": "grid_trot_v0.400_p0.48_w0.500_d0.500.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.5,
+      "command_df": 0.55,
+      "filename": "grid_trot_v0.400_p0.48_w0.500_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.5,
+      "command_df": 0.6,
+      "filename": "grid_trot_v0.400_p0.48_w0.500_d0.600.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.5,
+      "command_df": 0.65,
+      "filename": "grid_trot_v0.400_p0.48_w0.500_d0.650.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.5,
+      "command_df": 0.7,
+      "filename": "grid_trot_v0.400_p0.48_w0.500_d0.700.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.5,
+      "command_df": 0.75,
+      "filename": "grid_trot_v0.400_p0.48_w0.500_d0.750.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.5,
+      "filename": "grid_walk_v0.250_p0.48_w0.100_d0.500.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.55,
+      "filename": "grid_walk_v0.250_p0.48_w0.100_d0.550.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.6,
+      "filename": "grid_walk_v0.250_p0.48_w0.100_d0.600.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.65,
+      "filename": "grid_walk_v0.250_p0.48_w0.100_d0.650.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.7,
+      "filename": "grid_walk_v0.250_p0.48_w0.100_d0.700.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.75,
+      "filename": "grid_walk_v0.250_p0.48_w0.100_d0.750.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.5,
+      "filename": "grid_walk_v0.250_p0.48_w0.200_d0.500.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.55,
+      "filename": "grid_walk_v0.250_p0.48_w0.200_d0.550.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.6,
+      "filename": "grid_walk_v0.250_p0.48_w0.200_d0.600.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.65,
+      "filename": "grid_walk_v0.250_p0.48_w0.200_d0.650.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.7,
+      "filename": "grid_walk_v0.250_p0.48_w0.200_d0.700.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.75,
+      "filename": "grid_walk_v0.250_p0.48_w0.200_d0.750.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.5,
+      "filename": "grid_walk_v0.250_p0.48_w0.300_d0.500.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.55,
+      "filename": "grid_walk_v0.250_p0.48_w0.300_d0.550.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.6,
+      "filename": "grid_walk_v0.250_p0.48_w0.300_d0.600.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.65,
+      "filename": "grid_walk_v0.250_p0.48_w0.300_d0.650.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.7,
+      "filename": "grid_walk_v0.250_p0.48_w0.300_d0.700.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.75,
+      "filename": "grid_walk_v0.250_p0.48_w0.300_d0.750.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.4,
+      "command_df": 0.5,
+      "filename": "grid_walk_v0.250_p0.48_w0.400_d0.500.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.4,
+      "command_df": 0.55,
+      "filename": "grid_walk_v0.250_p0.48_w0.400_d0.550.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.4,
+      "command_df": 0.6,
+      "filename": "grid_walk_v0.250_p0.48_w0.400_d0.600.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.4,
+      "command_df": 0.65,
+      "filename": "grid_walk_v0.250_p0.48_w0.400_d0.650.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.4,
+      "command_df": 0.7,
+      "filename": "grid_walk_v0.250_p0.48_w0.400_d0.700.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.4,
+      "command_df": 0.75,
+      "filename": "grid_walk_v0.250_p0.48_w0.400_d0.750.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.5,
+      "command_df": 0.5,
+      "filename": "grid_walk_v0.250_p0.48_w0.500_d0.500.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.5,
+      "command_df": 0.55,
+      "filename": "grid_walk_v0.250_p0.48_w0.500_d0.550.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.5,
+      "command_df": 0.6,
+      "filename": "grid_walk_v0.250_p0.48_w0.500_d0.600.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.5,
+      "command_df": 0.65,
+      "filename": "grid_walk_v0.250_p0.48_w0.500_d0.650.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.5,
+      "command_df": 0.7,
+      "filename": "grid_walk_v0.250_p0.48_w0.500_d0.700.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.5,
+      "command_df": 0.75,
+      "filename": "grid_walk_v0.250_p0.48_w0.500_d0.750.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.5,
+      "filename": "grid_walk_v0.300_p0.48_w0.100_d0.500.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.55,
+      "filename": "grid_walk_v0.300_p0.48_w0.100_d0.550.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.6,
+      "filename": "grid_walk_v0.300_p0.48_w0.100_d0.600.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.65,
+      "filename": "grid_walk_v0.300_p0.48_w0.100_d0.650.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.7,
+      "filename": "grid_walk_v0.300_p0.48_w0.100_d0.700.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.75,
+      "filename": "grid_walk_v0.300_p0.48_w0.100_d0.750.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.5,
+      "filename": "grid_walk_v0.300_p0.48_w0.200_d0.500.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.55,
+      "filename": "grid_walk_v0.300_p0.48_w0.200_d0.550.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.6,
+      "filename": "grid_walk_v0.300_p0.48_w0.200_d0.600.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.65,
+      "filename": "grid_walk_v0.300_p0.48_w0.200_d0.650.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.7,
+      "filename": "grid_walk_v0.300_p0.48_w0.200_d0.700.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.75,
+      "filename": "grid_walk_v0.300_p0.48_w0.200_d0.750.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.5,
+      "filename": "grid_walk_v0.300_p0.48_w0.300_d0.500.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.55,
+      "filename": "grid_walk_v0.300_p0.48_w0.300_d0.550.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.6,
+      "filename": "grid_walk_v0.300_p0.48_w0.300_d0.600.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.65,
+      "filename": "grid_walk_v0.300_p0.48_w0.300_d0.650.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.7,
+      "filename": "grid_walk_v0.300_p0.48_w0.300_d0.700.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.75,
+      "filename": "grid_walk_v0.300_p0.48_w0.300_d0.750.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.4,
+      "command_df": 0.5,
+      "filename": "grid_walk_v0.300_p0.48_w0.400_d0.500.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.4,
+      "command_df": 0.55,
+      "filename": "grid_walk_v0.300_p0.48_w0.400_d0.550.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.4,
+      "command_df": 0.6,
+      "filename": "grid_walk_v0.300_p0.48_w0.400_d0.600.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.4,
+      "command_df": 0.65,
+      "filename": "grid_walk_v0.300_p0.48_w0.400_d0.650.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.4,
+      "command_df": 0.7,
+      "filename": "grid_walk_v0.300_p0.48_w0.400_d0.700.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.4,
+      "command_df": 0.75,
+      "filename": "grid_walk_v0.300_p0.48_w0.400_d0.750.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.5,
+      "command_df": 0.5,
+      "filename": "grid_walk_v0.300_p0.48_w0.500_d0.500.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.5,
+      "command_df": 0.55,
+      "filename": "grid_walk_v0.300_p0.48_w0.500_d0.550.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.5,
+      "command_df": 0.6,
+      "filename": "grid_walk_v0.300_p0.48_w0.500_d0.600.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.5,
+      "command_df": 0.65,
+      "filename": "grid_walk_v0.300_p0.48_w0.500_d0.650.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.5,
+      "command_df": 0.7,
+      "filename": "grid_walk_v0.300_p0.48_w0.500_d0.700.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.5,
+      "command_df": 0.75,
+      "filename": "grid_walk_v0.300_p0.48_w0.500_d0.750.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.5,
+      "filename": "grid_walk_v0.350_p0.48_w0.100_d0.500.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.55,
+      "filename": "grid_walk_v0.350_p0.48_w0.100_d0.550.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.6,
+      "filename": "grid_walk_v0.350_p0.48_w0.100_d0.600.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.65,
+      "filename": "grid_walk_v0.350_p0.48_w0.100_d0.650.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.7,
+      "filename": "grid_walk_v0.350_p0.48_w0.100_d0.700.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.75,
+      "filename": "grid_walk_v0.350_p0.48_w0.100_d0.750.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.5,
+      "filename": "grid_walk_v0.350_p0.48_w0.200_d0.500.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.55,
+      "filename": "grid_walk_v0.350_p0.48_w0.200_d0.550.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.6,
+      "filename": "grid_walk_v0.350_p0.48_w0.200_d0.600.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.65,
+      "filename": "grid_walk_v0.350_p0.48_w0.200_d0.650.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.7,
+      "filename": "grid_walk_v0.350_p0.48_w0.200_d0.700.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.75,
+      "filename": "grid_walk_v0.350_p0.48_w0.200_d0.750.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.5,
+      "filename": "grid_walk_v0.350_p0.48_w0.300_d0.500.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.55,
+      "filename": "grid_walk_v0.350_p0.48_w0.300_d0.550.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.6,
+      "filename": "grid_walk_v0.350_p0.48_w0.300_d0.600.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.65,
+      "filename": "grid_walk_v0.350_p0.48_w0.300_d0.650.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.7,
+      "filename": "grid_walk_v0.350_p0.48_w0.300_d0.700.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.75,
+      "filename": "grid_walk_v0.350_p0.48_w0.300_d0.750.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.4,
+      "command_df": 0.5,
+      "filename": "grid_walk_v0.350_p0.48_w0.400_d0.500.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.4,
+      "command_df": 0.55,
+      "filename": "grid_walk_v0.350_p0.48_w0.400_d0.550.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.4,
+      "command_df": 0.6,
+      "filename": "grid_walk_v0.350_p0.48_w0.400_d0.600.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.4,
+      "command_df": 0.65,
+      "filename": "grid_walk_v0.350_p0.48_w0.400_d0.650.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.4,
+      "command_df": 0.7,
+      "filename": "grid_walk_v0.350_p0.48_w0.400_d0.700.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.4,
+      "command_df": 0.75,
+      "filename": "grid_walk_v0.350_p0.48_w0.400_d0.750.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.5,
+      "command_df": 0.5,
+      "filename": "grid_walk_v0.350_p0.48_w0.500_d0.500.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.5,
+      "command_df": 0.55,
+      "filename": "grid_walk_v0.350_p0.48_w0.500_d0.550.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.5,
+      "command_df": 0.6,
+      "filename": "grid_walk_v0.350_p0.48_w0.500_d0.600.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.5,
+      "command_df": 0.65,
+      "filename": "grid_walk_v0.350_p0.48_w0.500_d0.650.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.5,
+      "command_df": 0.7,
+      "filename": "grid_walk_v0.350_p0.48_w0.500_d0.700.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.5,
+      "command_df": 0.75,
+      "filename": "grid_walk_v0.350_p0.48_w0.500_d0.750.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.5,
+      "filename": "grid_walk_v0.400_p0.48_w0.100_d0.500.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.55,
+      "filename": "grid_walk_v0.400_p0.48_w0.100_d0.550.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.6,
+      "filename": "grid_walk_v0.400_p0.48_w0.100_d0.600.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.65,
+      "filename": "grid_walk_v0.400_p0.48_w0.100_d0.650.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.7,
+      "filename": "grid_walk_v0.400_p0.48_w0.100_d0.700.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.75,
+      "filename": "grid_walk_v0.400_p0.48_w0.100_d0.750.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.5,
+      "filename": "grid_walk_v0.400_p0.48_w0.200_d0.500.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.55,
+      "filename": "grid_walk_v0.400_p0.48_w0.200_d0.550.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.6,
+      "filename": "grid_walk_v0.400_p0.48_w0.200_d0.600.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.65,
+      "filename": "grid_walk_v0.400_p0.48_w0.200_d0.650.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.7,
+      "filename": "grid_walk_v0.400_p0.48_w0.200_d0.700.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.75,
+      "filename": "grid_walk_v0.400_p0.48_w0.200_d0.750.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.5,
+      "filename": "grid_walk_v0.400_p0.48_w0.300_d0.500.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.55,
+      "filename": "grid_walk_v0.400_p0.48_w0.300_d0.550.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.6,
+      "filename": "grid_walk_v0.400_p0.48_w0.300_d0.600.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.65,
+      "filename": "grid_walk_v0.400_p0.48_w0.300_d0.650.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.7,
+      "filename": "grid_walk_v0.400_p0.48_w0.300_d0.700.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.75,
+      "filename": "grid_walk_v0.400_p0.48_w0.300_d0.750.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.4,
+      "command_df": 0.5,
+      "filename": "grid_walk_v0.400_p0.48_w0.400_d0.500.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.4,
+      "command_df": 0.55,
+      "filename": "grid_walk_v0.400_p0.48_w0.400_d0.550.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.4,
+      "command_df": 0.6,
+      "filename": "grid_walk_v0.400_p0.48_w0.400_d0.600.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.4,
+      "command_df": 0.65,
+      "filename": "grid_walk_v0.400_p0.48_w0.400_d0.650.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.4,
+      "command_df": 0.7,
+      "filename": "grid_walk_v0.400_p0.48_w0.400_d0.700.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.4,
+      "command_df": 0.75,
+      "filename": "grid_walk_v0.400_p0.48_w0.400_d0.750.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.5,
+      "command_df": 0.5,
+      "filename": "grid_walk_v0.400_p0.48_w0.500_d0.500.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.5,
+      "command_df": 0.55,
+      "filename": "grid_walk_v0.400_p0.48_w0.500_d0.550.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.5,
+      "command_df": 0.6,
+      "filename": "grid_walk_v0.400_p0.48_w0.500_d0.600.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.5,
+      "command_df": 0.65,
+      "filename": "grid_walk_v0.400_p0.48_w0.500_d0.650.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.5,
+      "command_df": 0.7,
+      "filename": "grid_walk_v0.400_p0.48_w0.500_d0.700.npz"
+    },
+    {
+      "gait": "walk",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.5,
+      "command_df": 0.75,
+      "filename": "grid_walk_v0.400_p0.48_w0.500_d0.750.npz"
+    }
+  ],
+  "evaluation_seed_start": 3000000,
+  "evaluation_seed_range": [
+    3000000,
+    4000000
+  ],
+  "condition_reset_seed": 4000000,
+  "task_sha256": "4b28fa708e8bc8329928dbfb7fec241572a0c62b0507053b34d2aa806ab204fe",
+  "collector_sha256": "cf597b446b259951a1edca0b93d78cecfb820475fc7e133ea6af803aa267d1bd",
+  "training_source_sha256": "5a892458664a4431fcc407cb8da660a94031787c5a368f4933100eddba484ac2",
+  "training_lineage_id": "fc9a9c1cba31438a5485599227d294e7cbf348b221f919adbaeab544dc2394f3",
+  "checkpoint": "/home/rml2/Documents/thomas_practice/beam_walking_RL/results/adaptive_duty_seed3_3072_20260911/model_1799.pt",
+  "checkpoint_sha256": "f9a35b2952c9c7574284c300884e07b85168be8f28c581bafb4ab622a19de18e",
+  "selector_checkpoint": null,
+  "selector_checkpoint_sha256": null,
+  "training_provenance_sha256": "5c27795880955ce1e47ff7ad19c8d0c038e10153b5556acf8b99c0a9bd0c6bd5",
+  "capacity": {
+    "checked_at": "2026-09-11T21:11:11.028954+00:00",
+    "checker_pid": 3516563,
+    "gpu_index": 0,
+    "gpu": "NVIDIA GeForce RTX 5070 Ti",
+    "total_mib": 16303,
+    "used_mib": 1053,
+    "free_mib": 14765,
+    "utilization_percent": 0,
+    "temperature_c": 45,
+    "required_free_mib": 4096,
+    "available_system_mib": 15284,
+    "required_system_mib": 8256,
+    "compute_processes": [],
+    "allowed_rustdesk_processes": [],
+    "blocked_compute_processes": [],
+    "exclusive_compute_device": true,
+    "rustdesk_exception_applied": false,
+    "rustdesk_process_limit_mib": 512,
+    "rustdesk_total_limit_mib": 512
+  },
+  "versions": {
+    "torch": "2.7.0+cu128",
+    "isaaclab": "0.42.25",
+    "isaacsim": "5.1.0.0",
+    "rsl-rl-lib": "3.0.1"
+  }
+}
