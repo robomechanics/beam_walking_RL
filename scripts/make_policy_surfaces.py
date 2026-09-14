@@ -12,10 +12,42 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import numpy as np
 import pandas as pd
 
-from policy_surface_data import (
-    CHECKPOINT_SHA256, DUTIES, GAITS, GRID_SEED, PERIOD, ROOT, SOURCE_FILES,
-    SPEEDS, TASK_FILES, TRIALS, WIDTHS, conditions, sha256, summarize, validate_measurement,
-)
+# --task selects the frozen seed-2 definitions (default) or the unified seed-5
+# definitions (unified_surface_data.py).
+_pre = argparse.ArgumentParser(add_help=False)
+_pre.add_argument("--task", choices=("paper", "unified"), default="paper")
+TASK_VARIANT = _pre.parse_known_args()[0].task
+import importlib  # noqa: E402
+_data = importlib.import_module(
+    "unified_surface_data" if TASK_VARIANT == "unified" else "policy_surface_data")
+CHECKPOINT_SHA256, DUTIES, GAITS = _data.CHECKPOINT_SHA256, _data.DUTIES, _data.GAITS
+GRID_SEED, PERIOD, ROOT = _data.GRID_SEED, _data.PERIOD, _data.ROOT
+SOURCE_FILES, SPEEDS, TASK_FILES = _data.SOURCE_FILES, _data.SPEEDS, _data.TASK_FILES
+TRIALS, WIDTHS, conditions = _data.TRIALS, _data.WIDTHS, _data.conditions
+sha256, summarize, validate_measurement = _data.sha256, _data.summarize, _data.validate_measurement
+TRAINING_SEED = getattr(_data, "TRAINING_SEED", 2)
+SCHEMA = getattr(_data, "SCHEMA", "old_policy_surface_exploratory_v1")
+COMPLETE_SCHEMA = getattr(_data, "COMPLETE_SCHEMA", "old_policy_surface_complete_v1")
+DUTIES_BY_GAIT = getattr(_data, "DUTIES_BY_GAIT", {"trot": DUTIES, "walk": (.75,)})
+TEXT = {
+    "paper": dict(
+        output="PAPER_GRAPHS/old_policy_walk_df",
+        title="Original RL policy: exploratory speed × duty-factor surfaces",
+        title_width="Original RL policy: measured surfaces at each stance width",
+        footer=True,
+        readme_head="# Original-policy walking duty-factor extension\n\n"
+        "These are new exploratory measurements of the exact seed-2 checkpoint used by the old figures. "
+        "Walk DF 0.50 and 0.625 were not in its training distribution. No adaptive policy is used.\n\n"),
+    "unified": dict(
+        output="PAPER_GRAPHS/unified_surfaces",
+        title="Unified RL policy: speed × duty-factor surfaces",
+        title_width="Unified RL policy: measured surfaces at each stance width",
+        footer=False,
+        readme_head="# Unified-policy speed × duty-factor surfaces\n\n"
+        "Measurements of the fresh unified seed-5 checkpoint (docs/unified_gait_plan.md): "
+        "trot at DF 0.50/0.625/0.75 and walk at DF 0.75/0.80/0.85/0.90, all within its "
+        "training distribution, at period 0.48 s.\n\n"),
+}[TASK_VARIANT]
 
 GAIT_COLORS = {"trot": "#0072BD", "walk": "#D95319"}
 
@@ -25,11 +57,11 @@ def load_results(directory):
     trials_path = directory / "surface_trials.csv"
     complete = json.loads((directory / "SURFACE_COMPLETE").read_text())
     manifest = json.loads(manifest_path.read_text())
-    if (manifest.get("schema") != "old_policy_surface_exploratory_v1"
+    if (manifest.get("schema") != SCHEMA
             or manifest.get("smoke") is not False
             or manifest.get("paper_claims_allowed") is not False
             or manifest.get("chi_computed") is not False
-            or complete.get("schema") != "old_policy_surface_complete_v1"
+            or complete.get("schema") != COMPLETE_SCHEMA
             or complete.get("manifest_sha256") != sha256(manifest_path)
             or complete.get("trials_sha256") != sha256(trials_path)):
         raise ValueError("A complete exploratory grid with matching hashes is required")
@@ -41,7 +73,7 @@ def load_results(directory):
     task_hash = hashlib.sha256(b"".join((archived / p).read_bytes() for p in TASK_FILES)).hexdigest()
     collector_hash = hashlib.sha256(b"".join((archived / p).read_bytes() for p in SOURCE_FILES)).hexdigest()
     if (sha256(training_path) != manifest.get("training_provenance_sha256")
-            or training.get("seed") != 2 or training.get("fresh_training") is not True
+            or training.get("seed") != TRAINING_SEED or training.get("fresh_training") is not True
             or training.get("task_sha256") != task_hash
             or task_hash != manifest.get("task_sha256")
             or collector_hash != manifest.get("collector_sha256")):
@@ -102,7 +134,9 @@ def summarize_cells(trials):
                          periodic_rate=float(group.periodic_orbit_gate_pass.mean()),
                          compliance_rate=float(group.compliant.mean()),
                          achieved_df_mean=float(group.achieved_df.mean()),
-                         out_of_training_support=int(key[0] == "walk" and key[4] != .75)))
+                         out_of_training_support=int(
+                             not min(DUTIES_BY_GAIT[key[0]]) - 1e-9 <= key[4]
+                             <= max(DUTIES_BY_GAIT[key[0]]) + 1e-9)))
     return pd.DataFrame(rows)
 
 
@@ -122,14 +156,14 @@ def summarize_factors(cells):
     return pd.DataFrame(rows)
 
 
-def measured_mesh(axis, data, metric, color):
+def measured_mesh(axis, data, metric, color, duties=DUTIES):
     grid = data.pivot(index="speed", columns="command_df", values=metric).reindex(
-        index=SPEEDS, columns=DUTIES)
+        index=SPEEDS, columns=list(duties))
     z = grid.to_numpy()
-    x, y = np.meshgrid(DUTIES, SPEEDS)
+    x, y = np.meshgrid(duties, SPEEDS)
     faces = []
     for i in range(len(SPEEDS) - 1):
-        for j in range(len(DUTIES) - 1):
+        for j in range(len(duties) - 1):
             vertices = [(x[a, b], y[a, b], z[a, b])
                         for a, b in ((i, j), (i + 1, j), (i + 1, j + 1), (i, j + 1))]
             if np.isfinite(vertices).all():
@@ -141,10 +175,10 @@ def measured_mesh(axis, data, metric, color):
     axis.scatter(x[finite], y[finite], z[finite], c=color, s=22, depthshade=False)
     # Only connect adjacent measured vertices. Never bridge an invalid vertex.
     for i in range(len(SPEEDS)):
-        for j in range(len(DUTIES) - 1):
+        for j in range(len(duties) - 1):
             if finite[i, j:j + 2].all():
                 axis.plot(x[i, j:j + 2], y[i, j:j + 2], z[i, j:j + 2], color=color)
-    for j in range(len(DUTIES)):
+    for j in range(len(duties)):
         for i in range(len(SPEEDS) - 1):
             if finite[i:i + 2, j].all():
                 axis.plot(x[i:i + 2, j], y[i:i + 2, j], z[i:i + 2, j], color=color)
@@ -164,9 +198,10 @@ def plot_surfaces(data, output, stem, title, per_width=False):
             selected = data if width is None else data[np.isclose(data.step_width, width)]
             missing = 0
             for gait, color in GAIT_COLORS.items():
-                missing += measured_mesh(ax, selected[selected.gait == gait], metric, color)
+                missing += measured_mesh(ax, selected[selected.gait == gait], metric, color,
+                                         DUTIES_BY_GAIT[gait])
             ax.set(xlabel="Commanded duty factor", ylabel="Speed (m/s)", zlabel=label,
-                   xlim=(.49, .76), ylim=(.24, .41),
+                   xlim=(min(DUTIES) - .01, max(DUTIES) + .01), ylim=(.24, .41),
                    zlim=(0, top) if row == 0 else (0, 1.05))
             ax.set_xticks(DUTIES)
             ax.set_yticks(SPEEDS)
@@ -183,7 +218,8 @@ def plot_surfaces(data, output, stem, title, per_width=False):
               + ("Each width shown separately; invalid CoT vertices and adjacent faces omitted."
                  if per_width else "CoT shown only with all five widths valid; equal-width aggregation. Periodicity includes all trials.")
               + "\nWalk DF < 0.75 was outside training support. Periodicity does not establish requested gait/DF compliance.")
-    fig.text(.5, .025, footer, ha="center", fontsize=9)
+    if TEXT["footer"]:
+        fig.text(.5, .025, footer, ha="center", fontsize=9)
     fig.subplots_adjust(left=.01, right=.94, bottom=.10, top=.88, hspace=.25, wspace=.12)
     for extension in ("png", "pdf"):
         fig.savefig(output / f"{stem}.{extension}", dpi=200, bbox_inches="tight")
@@ -193,7 +229,8 @@ def plot_surfaces(data, output, stem, title, per_width=False):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", type=Path, required=True)
-    parser.add_argument("--output", type=Path, default=ROOT / "PAPER_GRAPHS/old_policy_walk_df")
+    parser.add_argument("--output", type=Path, default=ROOT / TEXT["output"])
+    parser.add_argument("--task", choices=("paper", "unified"), default="paper")
     args = parser.parse_args()
     manifest, trials = load_results(args.input)
     cells = summarize_cells(trials)
@@ -201,24 +238,20 @@ def main():
     args.output.mkdir(parents=True, exist_ok=True)
     cells.to_csv(args.output / "surface_cells.csv", index=False)
     factors.to_csv(args.output / "surface_factors.csv", index=False)
-    plot_surfaces(factors, args.output, "figure_7_paper_style_rl_surfaces",
-                  "Original RL policy: exploratory speed × duty-factor surfaces")
-    plot_surfaces(cells, args.output, "rl_surfaces_by_width",
-                  "Original RL policy: measured surfaces at each stance width", per_width=True)
+    plot_surfaces(factors, args.output, "figure_7_paper_style_rl_surfaces", TEXT["title"])
+    plot_surfaces(cells, args.output, "rl_surfaces_by_width", TEXT["title_width"], per_width=True)
     (args.output / "provenance.json").write_text(json.dumps(dict(
         input=str(args.input.resolve()), checkpoint_sha256=manifest["checkpoint_sha256"],
         completion_sha256=sha256(args.input / "SURFACE_COMPLETE"),
         valid_energy_cells=int(cells.energy_condition_valid.sum()), total_cells=len(cells),
         plot_script_sha256=sha256(Path(__file__)), paper_claims_allowed=False), indent=2))
     (args.output / "README.md").write_text(
-        "# Original-policy walking duty-factor extension\n\n"
-        "These are new exploratory measurements of the exact seed-2 checkpoint used by the old figures. "
-        "Walk DF 0.50 and 0.625 were not in its training distribution. No adaptive policy is used.\n\n"
-        "The upper panel is positive mechanical CoT; the lower panel is phase-one periodicity, "
+        TEXT["readme_head"]
+        + "The upper panel is positive mechanical CoT; the lower panel is phase-one periodicity, "
         "a diagnostic of realized motion rather than a convergence estimate. "
         "Periodicity does not establish execution of the requested gait or duty factor; "
         "see the companion walking_df_command_fidelity figure. χ remains unmeasured here. "
-        "Each of 120 cells has 32 matched resets, 12 total cycles, and measurement over the last four. "
+        f"Each of {len(cells)} cells has 32 matched resets, 12 total cycles, and measurement over the last four. "
         "Physical failures at any time invalidate trial endpoints. Energy cells need at least 90% "
         "valid trials, including command, contact-topology, and periodicity gates. "
         "CoT summaries take the median of four cycles, then the median of valid trials. "

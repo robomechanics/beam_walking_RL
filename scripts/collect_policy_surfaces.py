@@ -12,16 +12,33 @@ import shutil
 import sys
 
 import numpy as np
-from policy_surface_data import (
-    CHECKPOINT, CHECKPOINT_SHA256, GRID_SEED, SMOKE_SEED, ROOT, SOURCE_FILES, TASK_FILES, TRIALS,
-    conditions, sha256, source_hash, summarize, validate_measurement,
-)
+
+# --task selects the frozen seed-2 paper definitions (default) or the unified
+# seed-5 definitions; everything downstream reads from the chosen module.
+_pre = argparse.ArgumentParser(add_help=False)
+_pre.add_argument("--task", choices=("paper", "unified"), default="paper")
+TASK_VARIANT = _pre.parse_known_args()[0].task
+import importlib  # noqa: E402
+_data = importlib.import_module(
+    "unified_surface_data" if TASK_VARIANT == "unified" else "policy_surface_data")
+CHECKPOINT, CHECKPOINT_SHA256 = _data.CHECKPOINT, _data.CHECKPOINT_SHA256
+GRID_SEED, SMOKE_SEED, ROOT = _data.GRID_SEED, _data.SMOKE_SEED, _data.ROOT
+SOURCE_FILES, TASK_FILES, TRIALS = _data.SOURCE_FILES, _data.TASK_FILES, _data.TRIALS
+conditions, sha256, source_hash = _data.conditions, _data.sha256, _data.source_hash
+summarize, validate_measurement = _data.summarize, _data.validate_measurement
+TRAINING_SEED = getattr(_data, "TRAINING_SEED", 2)
+SCHEMA = getattr(_data, "SCHEMA", "old_policy_surface_exploratory_v1")
+COMPLETE_SCHEMA = getattr(_data, "COMPLETE_SCHEMA", "old_policy_surface_complete_v1")
+MANIFEST_EXTRA = getattr(_data, "MANIFEST_EXTRA", dict(
+    scientific_role="exploratory_generalization_single_frozen_policy",
+    walk_training_duties=[.75], walk_unseen_duties=[.50, .625]))
 from beam_walking.experiment.protocol import CONTROL_DT, GAITS, leg_phase
 from isaaclab.app import AppLauncher
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--output", type=Path, required=True)
 parser.add_argument("--smoke", action="store_true")
+parser.add_argument("--task", choices=("paper", "unified"), default="paper")
 AppLauncher.add_app_launcher_args(parser)
 args = parser.parse_args()
 args.checkpoint = CHECKPOINT
@@ -36,14 +53,14 @@ if not args.output.is_relative_to(ROOT / "results"):
 if args.output.exists():
     parser.error("Output directory must be new")
 EXPECTED_CHECKPOINT = CHECKPOINT_SHA256
-if sha256(CHECKPOINT) != EXPECTED_CHECKPOINT:
-    parser.error("Checkpoint differs from the original paper figure policy")
+if EXPECTED_CHECKPOINT is None or sha256(CHECKPOINT) != EXPECTED_CHECKPOINT:
+    parser.error("Checkpoint differs from the registered policy for this task")
 training_bytes = (CHECKPOINT.parent / "provenance.json").read_bytes()
 training = json.loads(training_bytes)
 task_hash = hashlib.sha256(b"".join((ROOT / p).read_bytes() for p in TASK_FILES)).hexdigest()
-if (training.get("task_sha256") != task_hash or training.get("seed") != 2
+if (training.get("task_sha256") != task_hash or training.get("seed") != TRAINING_SEED
         or training.get("fresh_training") is not True):
-    parser.error("Original policy task/training provenance mismatch")
+    parser.error("Policy task/training provenance mismatch")
 from evaluation_capacity import check_evaluation_capacity
 capacity = check_evaluation_capacity(TRIALS, args.device or "cuda:0", False)
 app = AppLauncher(args).app
@@ -56,6 +73,8 @@ from isaaclab.utils import configclass
 from isaaclab_rl.rsl_rl import RslRlVecEnvWrapper
 from rsl_rl.runners import OnPolicyRunner
 from beam_walking.experiment.task import BeamEnv, BeamEnvCfg, BeamPPORunnerCfg, command
+if TASK_VARIANT == "unified":
+    BeamEnv, BeamEnvCfg, BeamPPORunnerCfg = _data.env_classes()
 
 
 def raw_state(env):
@@ -287,6 +306,8 @@ def main():
                 or saved.get("common_step_counter") != 86400
                 or runner.current_learning_iteration != 1799):
             raise ValueError("Loaded policy identity/iteration mismatch")
+        if TASK_VARIANT == "unified":
+            _data.verify_training(training, saved)
         policy = runner.get_inference_policy(device=env.device)
         robot_mass = float(env.scene["robot"].data.default_mass[0].sum().cpu())
         gravity = abs(float(cfg.sim.gravity[2]))
@@ -302,10 +323,9 @@ def main():
                         filename=f"surface_{g}_v{v:.3f}_w{w:.3f}_d{d:.3f}.npz")
                    for g, v, p, w, d in conditions(args.smoke)]
         manifest = dict(
-            schema="old_policy_surface_exploratory_v1", smoke=args.smoke,
-            scientific_role="exploratory_generalization_single_frozen_policy",
+            schema=SCHEMA, smoke=args.smoke,
             paper_claims_allowed=False, chi_computed=False,
-            walk_training_duties=[.75], walk_unseen_duties=[.50, .625],
+            **MANIFEST_EXTRA,
             terrain="flat_ground", external_pushes=False, nominal_motor_gains=True,
             conditions=entries, trials_per_condition=TRIALS,
             total_cycles=12, discarded_cycles=8, measurement_cycles=4,
@@ -347,7 +367,7 @@ def main():
                   "of", len(rows), flush=True)
         trial_path = args.output / "surface_trials.csv"
         write_rows(trial_path, all_rows)
-        complete = dict(schema="old_policy_surface_complete_v1",
+        complete = dict(schema=COMPLETE_SCHEMA,
                         manifest_sha256=sha256(manifest_path),
                         trials_sha256=sha256(trial_path), archive_sha256=archive_hashes,
                         conditions=len(entries), trials=len(all_rows))

@@ -47,11 +47,21 @@ parser.add_argument("--kd_scale", type=float)
 parser.add_argument(
     "--require_deployment_checkpoint", action="store_true",
     help="Reject checkpoints not trained with the frozen deployment DR profile")
+parser.add_argument(
+    "--task", choices=("paper", "unified"), default="paper",
+    help="Task variant the checkpoint was trained on: the paper sampler "
+         "(walk DF .75 only) or the unified trot/walk sampler "
+         "(walk DF .75-.90, docs/unified_gait_plan.md)")
 add_perturbation_arguments(parser)
 AppLauncher.add_app_launcher_args(parser)
 args = parser.parse_args()
 if args.dfs is None:
-    args.dfs = [.75] if args.gait == "walk" else [.50, .625, .75]
+    if args.gait == "walk":
+        args.dfs = [.75, .80, .85, .90] if args.task == "unified" else [.75]
+    else:
+        args.dfs = [.50, .625, .75]
+if args.task == "unified" and args.deployment_profile != "nominal":
+    parser.error("The unified task supports only the nominal plant profile")
 if args.num_envs < 1:
     parser.error("--num_envs must be positive")
 if args.deployment_profile == "fixed_gains":
@@ -86,14 +96,25 @@ if any(not _min_width - 1e-9 <= width <= .50 for width in args.step_widths):
     parser.error(f"Step width must be in [{_min_width:.2f},0.50] m")
 if not .25 <= args.speed <= .40:
     parser.error("Speed must be in [0.25,0.40] m/s")
-if any(df < .50 or df > min(.75, 1 - MIN_SWING_STEPS / ticks) + 1e-7 for df in args.dfs):
+if args.task == "unified" and args.gait == "walk":
+    # Unified walk support: DF .75-.90 with two swing ticks, period >= 20 ticks.
+    from beam_walking.experiment.unified_gait import (
+        WALK_DUTY_RANGE, WALK_MIN_SWING_STEPS, WALK_PERIOD_TICKS)
+    if ticks < WALK_PERIOD_TICKS[0]:
+        parser.error("Unified walk was trained at periods of 0.40 s and longer")
+    if any(df < WALK_DUTY_RANGE[0] - 1e-7
+           or df > min(WALK_DUTY_RANGE[1], 1 - WALK_MIN_SWING_STEPS / ticks) + 1e-7
+           for df in args.dfs):
+        parser.error("Unified walk DF must be in [0.75, 0.90] with two swing ticks")
+elif any(df < .50 or df > min(.75, 1 - MIN_SWING_STEPS / ticks) + 1e-7 for df in args.dfs):
     parser.error("DF/period must leave at least 0.10 s of requested swing")
 if len(set(args.step_widths)) != len(args.step_widths) or len(set(args.dfs)) != len(args.dfs):
     parser.error("Widths and duty factors must be unique")
-try:
-    validate_scientific_gait_duties(args.gait, args.dfs)
-except ValueError as error:
-    parser.error(str(error))
+if args.task == "paper":
+    try:
+        validate_scientific_gait_duties(args.gait, args.dfs)
+    except ValueError as error:
+        parser.error(str(error))
 low, high = (10000, 1000000) if args.split == "validation" else (1000000, 2000000)
 if not low <= args.seed or args.seed + args.num_envs > high:
     parser.error("Evaluation seeds must stay in the selected held-out split")
@@ -538,8 +559,13 @@ def main():
     _task.HEADING_COST_ON_OBSERVATION = bool(_narrow.get("heading_cost_on_observation", False))
     _task.CENTERING_SCALE = float(_narrow.get("centering_scale_m") or 0.25)
     _task.CENTERING_WEIGHT = float(_narrow.get("centering_weight") or 1.0)
-    cfg = (BeamEnvCfg() if args.deployment_profile == "nominal"
-           else DeploymentBeamEnvCfg())
+    if args.task == "unified":
+        from beam_walking.experiment.unified_gait_task import (
+            UnifiedEnv, UnifiedEnvCfg)
+        cfg = UnifiedEnvCfg()
+    else:
+        cfg = (BeamEnvCfg() if args.deployment_profile == "nominal"
+               else DeploymentBeamEnvCfg())
     cfg.scene.num_envs = args.num_envs
     cfg.seed = args.seed
     cfg.stance_start_probability = args.stance_start_probability
@@ -553,6 +579,8 @@ def main():
     cfg.recorders = EvaluationRecorderManagerCfg()
     env_class = (BeamEnv if args.deployment_profile == "nominal"
                  else DeploymentBeamEnv)
+    if args.task == "unified":
+        env_class = UnifiedEnv
     if perturbation_cfg is not None:
         from beam_walking.experiment.perturbation_env import perturbed_env_class
         env_class = perturbed_env_class(env_class, perturbation_cfg)
@@ -571,10 +599,14 @@ def main():
         agent.device = cfg.sim.device
         runner = OnPolicyRunner(wrapped, agent.to_dict(), log_dir=None, device=env.device)
         saved = runner.load(str(args.checkpoint), load_optimizer=False)
-        task_hash = source_hash([
-            ROOT / "source/beam_walking/beam_walking/experiment/task.py",
-            ROOT / "source/beam_walking/beam_walking/experiment/protocol.py",
-        ])
+        if args.task == "unified":
+            from beam_walking.experiment.unified_gait import UNIFIED_TASK_FILES
+            task_hash = source_hash([ROOT / p for p in UNIFIED_TASK_FILES])
+        else:
+            task_hash = source_hash([
+                ROOT / "source/beam_walking/beam_walking/experiment/task.py",
+                ROOT / "source/beam_walking/beam_walking/experiment/protocol.py",
+            ])
         if not saved or saved.get("task_sha256") != task_hash:
             raise ValueError("Checkpoint task source does not match this evaluator")
         training_path = args.checkpoint.parent / "provenance.json"
@@ -637,6 +669,7 @@ def main():
         provenance = {
             "mode": "evaluate", "split": args.split, "seed": args.seed,
             "argv": sys.argv, "terrain": "flat_ground",
+            "task_variant": args.task,
             "external_pushes": False,
             "condition_reset_seed": args.seed + 3000000,
             "training_provenance": str(training_path.resolve()),

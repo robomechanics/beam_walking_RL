@@ -60,10 +60,27 @@ parser.add_argument("--speeds", type=float, nargs="+",
                     default=[.25, .30, .35, .40])
 parser.add_argument("--periods", type=float, nargs="+", default=[.48])
 parser.add_argument("--gaits", choices=("walk",), nargs="+", default=["walk"])
+parser.add_argument(
+    "--task", choices=("high_duty_walk", "unified"), default="high_duty_walk",
+    help="Low-level task the checkpoint was trained on; 'unified' evaluates "
+         "the walk candidates on the unified trot/walk policy")
 parser.add_argument("--seed", type=int)
 parser.add_argument("--stance_start_probability", type=float, default=.10)
 AppLauncher.add_app_launcher_args(parser)
 args = parser.parse_args()
+
+TRAINING_SCHEMA = "high_duty_walk_training_v1"
+if args.task == "unified":
+    # Same grid, gates, and selector; the low-level policy, its task hash,
+    # lineage rule, and training seed come from the unified protocol.
+    from beam_walking.experiment.unified_gait import (  # noqa: E402
+        UNIFIED_TASK_FILES, UNIFIED_TRAINING_SEED,
+        UNIFIED_TRAINING_SOURCE_FILES, unified_lineage_id)
+    HIGH_DUTY_WALK_TASK_FILES = UNIFIED_TASK_FILES
+    HIGH_DUTY_WALK_TRAINING_SOURCE_FILES = UNIFIED_TRAINING_SOURCE_FILES
+    high_duty_walk_lineage_id = unified_lineage_id
+    HIGH_DUTY_WALK_TRAINING_SEED = UNIFIED_TRAINING_SEED
+    TRAINING_SCHEMA = "unified_gait_training_v1"
 
 if not args.checkpoint.is_file():
     parser.error("Checkpoint does not exist")
@@ -180,6 +197,12 @@ from beam_walking.experiment.high_duty_walk_task import (  # noqa: E402
     HighDutyWalkEnvCfg,
     HighDutyWalkPPORunnerCfg,
 )
+if args.task == "unified":
+    from beam_walking.experiment.unified_gait_task import (  # noqa: E402
+        UnifiedEnv as HighDutyWalkEnv,
+        UnifiedEnvCfg as HighDutyWalkEnvCfg,
+        UnifiedPPORunnerCfg as HighDutyWalkPPORunnerCfg,
+    )
 from beam_walking.experiment.duty_grid import summarize_condition  # noqa: E402
 from beam_walking.experiment.task import command  # noqa: E402
 
@@ -487,7 +510,7 @@ def main():
         saved = runner.load(str(args.checkpoint), load_optimizer=False)
         task_sha256 = files_sha256(ROOT, HIGH_DUTY_WALK_TASK_FILES)
         if not saved or saved.get("task_sha256") != task_sha256:
-            raise ValueError("Checkpoint does not match the high-duty walk task")
+            raise ValueError("Checkpoint does not match the requested low-level task")
         training_path = args.checkpoint.parent / "provenance.json"
         if not training_path.is_file():
             raise ValueError("High-duty walk training provenance is required")
@@ -500,7 +523,7 @@ def main():
         expected_control_steps = (
             training.get("training_iterations_requested", 0)
             * agent.num_steps_per_env)
-        if (training.get("schema") != "high_duty_walk_training_v1"
+        if (training.get("schema") != TRAINING_SCHEMA
                 or training.get("mode") != "train"
                 or training.get("fresh_training") is not True
                 or training.get("primary_training_protocol") is not True
@@ -556,6 +579,7 @@ def main():
                  ("high_duty_walk_grid_exploratory_v1" if args.exploratory
                   else "high_duty_walk_grid_v1"))),
             "scientific_scope": "flat_ground_commanded_step_width",
+            "task_variant": args.task,
             "terrain": "flat_ground", "terrain_width_input": False,
             "objective": "minimum positive mechanical CoT among candidates passing compliance gates",
             "gait": "walk",
