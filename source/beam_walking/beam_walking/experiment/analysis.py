@@ -406,6 +406,15 @@ def validate_manifest(directory):
             "training_provenance_sha256":
                 manifest["training_provenance_sha256"],
         }
+        # Evaluations made after the perturbation feature also record the
+        # push flag and profile (None for nominal runs) in the completion
+        # marker; older markers lack them. Either way they must match the
+        # manifest.
+        for key in ("external_pushes", "perturbation"):
+            if key in complete:
+                if complete[key] != manifest.get(key):
+                    raise ValueError(f"Completion marker {key} differs from manifest")
+                expected_complete[key] = complete[key]
         deployment_evaluation = manifest.get("deployment_evaluation_profile")
         if deployment_evaluation is not None:
             from .deployment import (

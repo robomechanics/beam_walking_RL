@@ -1,0 +1,9 @@
+{
+  "input": "/home/rml2/Documents/thomas_practice/beam_walking_RL/results/unified_surfaces_seed5_20260914/grid",
+  "checkpoint_sha256": "54a09f5fb8f718c689a08bfbfdcaa65a4154d7f70dfdf2aa48047c649b28a7a1",
+  "completion_sha256": "6d7a051366f5f805e7bad391b5ffa78d72b64cf29c75febb98bff6e4fdc3f208",
+  "valid_energy_cells": 63,
+  "total_cells": 140,
+  "plot_script_sha256": "572c4a0823c15a5fbfa5f6a733c13ae641bd9e2dd0292452d349d081cbe33014",
+  "paper_claims_allowed": false
+}

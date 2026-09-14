@@ -16,11 +16,22 @@ import numpy as np
 # --task selects the frozen seed-2 paper definitions (default) or the unified
 # seed-5 definitions; everything downstream reads from the chosen module.
 _pre = argparse.ArgumentParser(add_help=False)
-_pre.add_argument("--task", choices=("paper", "unified"), default="paper")
-TASK_VARIANT = _pre.parse_known_args()[0].task
+_pre.add_argument("--task", choices=("paper", "unified", "specialist"), default="paper")
+_pre.add_argument("--checkpoint", type=Path)
+_pre_args = _pre.parse_known_args()[0]
+TASK_VARIANT = _pre_args.task
 import importlib  # noqa: E402
-_data = importlib.import_module(
-    "unified_surface_data" if TASK_VARIANT == "unified" else "policy_surface_data")
+_data = importlib.import_module({
+    "paper": "policy_surface_data", "unified": "unified_surface_data",
+    "specialist": "specialist_surface_data"}[TASK_VARIANT])
+if _pre_args.checkpoint is not None:
+    # Specialists have one checkpoint per gait, bound here from the command line.
+    if TASK_VARIANT == "paper":
+        raise SystemExit("--checkpoint is not accepted for the frozen paper task")
+    _data.CHECKPOINT = _pre_args.checkpoint.resolve()
+    _data.CHECKPOINT_SHA256 = _data.sha256(_data.CHECKPOINT)
+elif TASK_VARIANT == "specialist":
+    raise SystemExit("--task specialist requires --checkpoint")
 CHECKPOINT, CHECKPOINT_SHA256 = _data.CHECKPOINT, _data.CHECKPOINT_SHA256
 GRID_SEED, SMOKE_SEED, ROOT = _data.GRID_SEED, _data.SMOKE_SEED, _data.ROOT
 SOURCE_FILES, TASK_FILES, TRIALS = _data.SOURCE_FILES, _data.TASK_FILES, _data.TRIALS
@@ -38,12 +49,70 @@ from isaaclab.app import AppLauncher
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--output", type=Path, required=True)
 parser.add_argument("--smoke", action="store_true")
-parser.add_argument("--task", choices=("paper", "unified"), default="paper")
+parser.add_argument("--task", choices=("paper", "unified", "specialist"), default="paper")
+parser.add_argument("--checkpoint", type=Path,
+                    help="Specialist task: the gait's checkpoint (model_1799.pt)")
+parser.add_argument("--gaits", choices=GAITS, nargs="+",
+                    help="Restrict conditions to these gaits (specialists: the policy's gait)")
+parser.add_argument("--period-sweep", action="store_true",
+                    help="Unified task only: collect every gait x period x speed x "
+                         "width x feasible duty condition for the selector")
+parser.add_argument("--selector-checkpoint", type=Path,
+                    help="Unified task only: roll out the selector's chosen DF per "
+                         "supported context on fresh seeds instead of the fixed grid")
 AppLauncher.add_app_launcher_args(parser)
 args = parser.parse_args()
 args.checkpoint = CHECKPOINT
 args.num_envs = TRIALS
 args.seed = SMOKE_SEED if args.smoke else GRID_SEED
+CONDITIONS = conditions(args.smoke)
+SELECTOR_PAYLOAD = SELECTOR_SHA256 = None
+if args.period_sweep:
+    if TASK_VARIANT == "paper" or args.smoke or args.selector_checkpoint:
+        parser.error("--period-sweep requires --task unified/specialist alone")
+    CONDITIONS = _data.period_sweep_conditions()
+    args.seed = _data.SWEEP_SEED
+if args.selector_checkpoint is not None:
+    if TASK_VARIANT == "paper" or args.smoke:
+        parser.error("--selector-checkpoint requires --task unified/specialist and no --smoke")
+    from beam_walking.experiment.unified_duty_selector import (
+        VALIDATION_COMPLETE_SCHEMA, VALIDATION_SCHEMA, load_selector,
+        predict_supported_rows)
+    _model, SELECTOR_PAYLOAD = load_selector(args.selector_checkpoint)
+    if SELECTOR_PAYLOAD.get("exploratory") is not False:
+        parser.error("Only a primary selector can enter rollout validation")
+    _grid_ckpt = SELECTOR_PAYLOAD["grid_checkpoint_sha256"]
+    if isinstance(_grid_ckpt, dict):
+        # One grid per gait (specialists): validate only the gaits this
+        # checkpoint was fitted from.
+        _fitted_gaits = [g for g, v in _grid_ckpt.items() if v == CHECKPOINT_SHA256]
+        if not _fitted_gaits:
+            parser.error("Selector was fitted for different low-level checkpoints")
+        args.gaits = sorted(set(args.gaits or _fitted_gaits) & set(_fitted_gaits))
+        if not args.gaits:
+            parser.error("Requested gaits were not fitted from this checkpoint")
+    elif _grid_ckpt != CHECKPOINT_SHA256:
+        parser.error("Selector was fitted for a different low-level checkpoint")
+    SELECTOR_SHA256 = sha256(args.selector_checkpoint)
+    _rows = predict_supported_rows(
+        _model, SELECTOR_PAYLOAD,
+        # Contexts carry their own period; never override it.
+        [dict(row) for row in SELECTOR_PAYLOAD["supported_contexts"]],
+        require_deployment_ready=False)
+    CONDITIONS = [(row["gait"], row["speed"], row["period"], row["step_width"],
+                   row["selected_df"]) for row in _rows]
+    args.seed = _data.VALIDATION_SEED
+    SCHEMA, COMPLETE_SCHEMA = VALIDATION_SCHEMA, VALIDATION_COMPLETE_SCHEMA
+if args.gaits:
+    if TASK_VARIANT == "paper":
+        parser.error("--gaits is not accepted for the frozen paper task")
+    CONDITIONS = [c for c in CONDITIONS if c[0] in args.gaits]
+    if not CONDITIONS:
+        parser.error("No conditions remain for the requested gaits")
+if TASK_VARIANT == "specialist":
+    _gait = _data.specialist_gait(_data.read_training(CHECKPOINT))
+    if {c[0] for c in CONDITIONS} != {_gait}:
+        parser.error(f"Specialist checkpoint is a {_gait} policy; pass --gaits {_gait}")
 args.settle_cycles = 12
 args.measurement_cycles = 4
 args.stance_start_probability = .10
@@ -75,6 +144,8 @@ from rsl_rl.runners import OnPolicyRunner
 from beam_walking.experiment.task import BeamEnv, BeamEnvCfg, BeamPPORunnerCfg, command
 if TASK_VARIANT == "unified":
     BeamEnv, BeamEnvCfg, BeamPPORunnerCfg = _data.env_classes()
+elif TASK_VARIANT == "specialist":
+    BeamEnv, BeamEnvCfg, BeamPPORunnerCfg = _data.env_classes(training)
 
 
 def raw_state(env):
@@ -306,7 +377,7 @@ def main():
                 or saved.get("common_step_counter") != 86400
                 or runner.current_learning_iteration != 1799):
             raise ValueError("Loaded policy identity/iteration mismatch")
-        if TASK_VARIANT == "unified":
+        if TASK_VARIANT in ("unified", "specialist"):
             _data.verify_training(training, saved)
         policy = runner.get_inference_policy(device=env.device)
         robot_mass = float(env.scene["robot"].data.default_mass[0].sum().cpu())
@@ -319,12 +390,20 @@ def main():
         reset_plan = torch.tensor(resets, device=env.device)
         stance_starts = torch.tensor(grounded, device=env.device, dtype=torch.bool)
         frozen_hash = source_hash()
+        prefix = "selector" if SELECTOR_PAYLOAD is not None else "surface"
         entries = [dict(gait=g, speed=v, period=p, step_width=w, command_df=d,
-                        filename=f"surface_{g}_v{v:.3f}_w{w:.3f}_d{d:.3f}.npz")
-                   for g, v, p, w, d in conditions(args.smoke)]
+                        filename=(f"{prefix}_{g}_v{v:.3f}_w{w:.3f}_d{d:.3f}.npz"
+                                  if TASK_VARIANT == "paper" else
+                                  f"{prefix}_{g}_v{v:.3f}_p{p:.2f}_w{w:.3f}_d{d:.3f}.npz"))
+                   for g, v, p, w, d in CONDITIONS]
         manifest = dict(
             schema=SCHEMA, smoke=args.smoke,
             paper_claims_allowed=False, chi_computed=False,
+            selector_checkpoint=(str(args.selector_checkpoint.resolve())
+                                 if SELECTOR_PAYLOAD is not None else None),
+            selector_checkpoint_sha256=SELECTOR_SHA256,
+            period_sweep=bool(args.period_sweep),
+            gaits=sorted({c[0] for c in CONDITIONS}),
             **MANIFEST_EXTRA,
             terrain="flat_ground", external_pushes=False, nominal_motor_gains=True,
             conditions=entries, trials_per_condition=TRIALS,
@@ -342,7 +421,7 @@ def main():
         manifest_path = args.output / "surface_manifest.json"
         manifest_path.write_text(json.dumps(manifest, indent=2))
         all_rows, archive_hashes, matched_initial = [], {}, None
-        for condition, entry in zip(conditions(args.smoke), entries):
+        for condition, entry in zip(CONDITIONS, entries):
             if source_hash() != frozen_hash:
                 raise RuntimeError("Reviewed sources changed during evaluation")
             payload, initial = collect_condition(

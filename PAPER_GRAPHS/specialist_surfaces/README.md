@@ -1,0 +1,5 @@
+# Gait-specialist speed × duty-factor surfaces
+
+Measurements of the trot and walk specialists trained under the unified protocol (docs/unified_gait_plan.md), each on its own checkpoint: trot at DF 0.50/0.625/0.75 and walk at DF 0.75/0.80/0.85/0.90, period 0.48 s.
+
+The upper panel is positive mechanical CoT; the lower panel is phase-one periodicity, a diagnostic of realized motion rather than a convergence estimate. Periodicity does not establish execution of the requested gait or duty factor; see the companion walking_df_command_fidelity figure. χ remains unmeasured here. Each of 140 cells has 32 matched resets, 12 total cycles, and measurement over the last four. Physical failures at any time invalidate trial endpoints. Energy cells need at least 90% valid trials, including command, contact-topology, and periodicity gates. CoT summaries take the median of four cycles, then the median of valid trials. The aggregate takes the median of all five width summaries and requires all five widths valid; missing cells are not interpolated. The companion figure separates widths. All trial denominators are retained.
