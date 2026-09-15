@@ -113,7 +113,12 @@ def main():
     table = []
     for force in args.forces:
         for gait in PERIODS:
-            rows = collect(args.results, gait, args.tag, force)
+            try:
+                rows = collect(args.results, gait, args.tag, force)
+            except FileNotFoundError:
+                if force == 25:
+                    raise
+                continue   # stronger levels run only for gaits at full success at 25 N
             figure(rows, gait, args.output, force)
             table += rows
     with (args.output / "push_robustness_success.csv").open("w", newline="") as f:

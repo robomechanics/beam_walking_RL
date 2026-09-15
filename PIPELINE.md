@@ -7,11 +7,9 @@ The runnable version is `scripts/pipelines/specialist_pipeline.sh`.
 ## What it produces
 
 One trot and one walk policy for the Unitree Go2 on flat ground, each commanded
-by forward speed, duty factor, full stance width, gait period and gait. The
-policies reported in the paper are **push-trained**: a clean policy is trained
-first, then fine-tuned with random pushes so it does not exploit the noise-free
-simulator. Every policy is evaluated for command fidelity, energetic cost,
-periodicity and success under pushes across the full commanded range, and a
+by forward speed, duty factor, full stance width, gait period and gait. Each
+policy is evaluated for command fidelity, periodicity, energetic cost and
+robustness across the full commanded range, and a
 duty-factor selector is fit on those measurements.
 
 ## Commanded domain
@@ -21,7 +19,8 @@ duty-factor selector is fit on those measurements.
 | Stance width | 0.05–0.30 m, anchors every 0.05 m | same |
 | Forward speed | 0.25–0.40 m/s, anchors every 0.05 m/s | same |
 | Gait period | 0.36–0.54 s | 0.40–0.54 s |
-| Duty factor anchors | 0.50, 0.625, 0.75 | 0.75, 0.80, 0.85, 0.90 |
+| Duty factor, training anchors | 0.50, 0.625, 0.75, with duty drawn continuously over 0.50–0.75 | 0.75, 0.80, 0.85, 0.90, with duty drawn continuously over 0.75–0.90 |
+| Duty factor, evaluated | 0.50, 0.55, 0.60, 0.65, 0.70, 0.75 | 0.75, 0.80, 0.85, 0.90 |
 | Minimum swing | 5 control ticks (0.10 s) | 2 control ticks (0.04 s) |
 
 The minimum swing sets which duty factors exist at each period. Trot cannot
@@ -32,35 +31,54 @@ swing ticks. Commands change only at gait-cycle boundaries.
 
 | # | Stage | Script | Key settings |
 |---|---|---|---|
-| 1 | Clean training | `scripts/narrow_specialist_experiment.py train --gait G` | 3,072 envs, 1,800 PPO updates, seed 5, 10% grounded starts |
-| 2 | Push fine-tune | `scripts/narrow_specialist_push_experiment.py train --gait G --perturbation --initialize_from <previous>` | two consecutive 1,200-update segments (2,400 updates), each warm-started from the previous checkpoint; seed 3 |
-| 3 | Command fidelity | `scripts/evaluate_policy.py --task narrow_specialist` | every period of the gait, all widths and duty anchors, 64 held-out trials, 0.30 m/s |
-| 4 | Duty-contrast gate | `scripts/narrow_fidelity_gate.py --criterion contrast` | stops the pipeline if the duty contrast collapses |
-| 5 | Push robustness | `scripts/evaluate_policy.py --task narrow_specialist --perturbation` | every period of the gait, all widths and duty anchors, 64 held-out pushed trials, 0.30 m/s |
-| 6 | Period sweep | `scripts/collect_policy_surfaces.py --task narrow_specialist --period-sweep` | trot 0.36/0.40/0.48/0.54 s, walk 0.40/0.48/0.54 s, 4 speeds, 6 widths, feasible duties, 32 matched trials |
-| 7 | Selector | `scripts/fit_unified_duty_selector.py`, then `collect_policy_surfaces.py --selector-checkpoint`, then `scripts/validate_unified_selector.py` | fit on both sweeps, fresh-seed validation per gait, promotion |
-| 8 | Figures | `scripts/make_specialist_period_surfaces.py`, `scripts/make_specialist_trend_figures.py`, `scripts/make_narrow_push_robustness_figures.py` | one panel or file per period |
-| 9 | Export | shell step | CSVs, provenance and figures into `paper_data/` |
+| 1 | Training | `scripts/narrow_specialist_experiment.py train --gait G` | 3,072 envs, 1,800 PPO updates, seed 5, 10% grounded starts |
+| 2 | Command fidelity | `scripts/evaluate_policy.py --task narrow_specialist` | every period of the gait, all widths and evaluated duty factors, 64 held-out trials, 0.30 m/s |
+| 3 | Duty-contrast check | `scripts/narrow_fidelity_gate.py --criterion contrast` | recorded for every fidelity run |
+| 4 | Robustness | `scripts/evaluate_policy.py --task narrow_specialist --perturbation` | every period of the gait, all widths and evaluated duty factors, 64 held-out trials under random base disturbances up to 25 N, 0.30 m/s |
+| 4b | Robustness, stronger disturbance | same, `--perturbation_max_force 50 --perturbation_max_torque 6` | for a gait whose 0.20–0.30 m cells all reach 95% success at 25 N, stage 4 repeated with disturbances up to 50 N |
+| 5 | Period sweep | `scripts/collect_policy_surfaces.py --task narrow_specialist --period-sweep` | trot 0.36/0.40/0.48/0.54 s, walk 0.40/0.48/0.54 s, 4 speeds, 6 widths, feasible evaluated duty factors, 32 matched trials |
+| 6 | Selector | `scripts/fit_unified_duty_selector.py`, then `collect_policy_surfaces.py --selector-checkpoint`, then `scripts/validate_unified_selector.py` | fit on both sweeps, fresh-seed validation per gait, promotion |
+| 7 | Figures | `scripts/make_narrow_paper_figures.py` | five paper figures, each with its data table (below) |
+| 8 | Export | shell step | per-trial CSVs, robustness summaries, policy provenance, duty-contrast report and the paper figures into `paper_data/`; the selector once promoted |
 
-Trainings run one at a time. Evaluations (stages 3, 5, 6 and the selector
-validations) run trot and walk side by side.
-Each is an independent process with its own seeds, so this changes only
-wall-clock time.
+Trainings run one at a time. Evaluations (stages 2, 4, 4b, 5 and the selector
+validations) run trot and walk side by side. Each is an independent process
+with its own seeds, so this changes only wall-clock time.
+
+### Paper figures
+
+| Figure | Content |
+|---|---|
+| 1 | Periodicity (cycle RMS, median and interquartile band) against realized duty factor, trot and walk, one panel per stance width |
+| 2 | Positive mechanical CoT against realized duty factor, trot and walk, one panel per stance width |
+| 3 | Robustness: success rate against stance width, one line per commanded duty factor, per gait |
+| 4 | Realized duty factor by stance width and commanded duty factor, per gait |
+| 5 | Optimal duty factor against stance width, trot and walk: the duty factor with the lowest CoT divided by success rate under disturbance, with 95% bootstrap intervals |
+
+Every figure pools the periods at which every duty factor of the gait was run.
+CoT uses every trial that completed without a failure.
+
+### Optimal duty factor
+
+Figure 5 weighs efficiency against robustness. For each gait and stance width,
+each duty factor is scored by its undisturbed CoT (period sweep at 0.30 m/s,
+the robustness speed) divided by its success rate under disturbance (stage 4),
+and the lowest score is optimal. The score is the expected energy per
+successfully completed traversal, so a failed traversal costs one traversal's
+energy. A width where no duty factor succeeds has no optimum. The interval
+resamples trials within every period and duty factor, 1,000 times.
+
+Dividing by success rate, instead of subtracting a weighted success term, keeps
+low but non-zero success rates informative. A subtracted term is dominated by
+energy wherever success is low, and would choose a duty factor that never
+succeeds.
 
 ### Training details
 
 **Training budget per gait.** One PPO update is 3,072 simulated robots each
 taking 48 control steps, 147,456 control steps in total, about 49 minutes of
-simulated robot time.
-
-| Phase | Updates | Control steps | Simulated robot time |
-|---|---|---|---|
-| Clean training | 1,800 | 265.4 million | 1,475 hours |
-| Push fine-tune, 2 segments of 1,200 | 2,400 | 353.9 million | 1,966 hours |
-| **Push-trained policy, total** | **4,200** | **619.3 million** | **3,441 hours** |
-
-On one RTX 5070 Ti, clean training takes 29 min per gait and each push segment
-22 min per gait, about 2 h 25 min of training for both gaits.
+simulated robot time. Training runs 1,800 updates: 265.4 million control steps,
+about 1,475 hours of simulated robot time, 29 min per gait on one RTX 5070 Ti.
 
 - **PPO.** 48-step rollouts, 5 epochs, 4 minibatches, learning rate 1e-3
   (adaptive), γ 0.995, λ 0.95, clip 0.2, entropy 0.001. Actor and critic MLPs
@@ -73,107 +91,75 @@ On one RTX 5070 Ti, clean training takes 29 min per gait and each push segment
   physics, **self-collision on**, no domain randomization.
 - **Placement reward.** 3 cm lateral tolerance. Width observations are
   normalized over 0.10–0.50 m.
-- **Pushes during fine-tuning.** Random world-frame base force up to 25 N and
-  torque up to 3 N m, held 0.10–0.40 s at a time, ramping from 10% to 100% of
-  that bound over the first 10 s of each episode.
-- **Fine-tune segments.** Segment 1 starts from the clean policy's weights with
-  a new Adam optimizer. Segment 2 continues segment 1's weights, Adam state and
-  adaptive learning rate. The curriculum step counter carries through, so
-  fine-tuning stays on the full command distribution. Both segments use seed 3.
-  Update numbers restart in each segment's directory: segment 2's
-  `model_1199.pt` is update 4,199 of the policy.
+
+### Robustness disturbances
+
+Random world-frame base force up to 25 N and torque up to 3 N m, held
+0.10–0.40 s at a time, ramping from 10% to 100% of that bound over the first
+10 s of each episode. The stronger level doubles both bounds.
 
 ### Selector
 
 For each context of stance width, speed, period and gait, the label is the
 candidate duty factor with the lowest median positive mechanical cost of
 transport among candidates passing at least 90% of the compliance and
-finite-energy checks. The classifier is masked to the gait's candidates that
-are feasible at that period. A selector is promoted only if, on fresh seeds,
-every context reaches at least 90% compliance and 90% finite-energy compliance,
-with median realized duty within 0.05 of the selection.
+finite-energy checks. Candidates are the evaluated duty factors, every 0.05 for
+both gaits, read from the sweep manifest. The classifier is masked to the gait's
+candidates that are feasible at that period. A selector is promoted only if, on
+fresh seeds, every context reaches at least 90% compliance and 90% finite-energy
+compliance, with median realized duty within 0.05 of the selection.
 
 The selector's width domain is read from the sweep, so it covers 0.05–0.30 m.
 
 ## Design decisions
 
-- **No domain randomization.** Earlier policies trained with randomized
-  actuator delay (up to 20 ms) and motor strength (down to 70%) learned to
-  touch down one to three control ticks early. Commanded duty 0.50 then ran at
-  0.58–0.67 and the duty contrast the paper depends on collapsed.
+- **No domain randomization.** Randomized actuator delay (up to 20 ms) and motor
+  strength (down to 70%) make the policy touch down one to three control ticks
+  early, which compresses the realized duty factor toward the middle of the
+  range.
 - **Self-collision on.** At 0.05 m the feet are millimetres apart. Without
   collision the legs could pass through each other and flatter narrow stances.
-- **2,400 fine-tune updates.** Narrow stance under pushes learns slowly: after
-  1,200 updates a third of trot training episodes still fell, so fine-tuning
-  runs for two 1,200-update segments.
-- **Push-trained policies are the reported controller.** This follows the
-  mentor's direction to avoid behaviour that only works in a noise-free
-  simulator. The cost is measurable: a push-trained trot policy realized duty
-  0.56 for 0.50 commanded, and 0.145 m stance for 0.10 m commanded. Analyze
-  results against **realized** duty factor and stance width, which every table
-  includes.
-- **Contrast gate, not exact tracking.** Because push training shifts duty
-  somewhat by design, the gate requires realized duty to rise with the command
-  and keep at least 60% of the commanded spread, at every period tested.
-- **Push robustness measures duty factor's effect on stability.** Without
-  disturbance every width and duty factor completes its trials, so success
-  cannot separate duty factors. The pushed trials use the training push profile
-  and report success against duty factor for each width and period.
+- **No disturbances during training.** The policies are trained without
+  external disturbances, so each leg executes the commanded contact schedule;
+  disturbances enter only in the robustness evaluation.
+- **Duty-contrast check, not exact tracking.** The check records whether
+  realized duty rises with the command and keeps at least 60% of the commanded
+  spread at every period. Analyses use the **realized** duty factor and stance
+  width, which every table includes.
+- **Robustness is measured under disturbance.** Without disturbance every
+  width and duty factor completes its trials, so success cannot separate duty
+  factors. Random base disturbances make success report robustness against duty
+  factor for each width and period. Where the wider stances reach full success
+  at every duty factor, a second level with twice the force and torque keeps
+  them informative.
+- **Duty factors every 0.05.** Trot and walk are evaluated on the same duty
+  step, so trends and selector choices have the same resolution for both gaits.
 - **No single fixed period.** Every stage spans the gait's periods. The period
   sweep already contains the 0.48 s slice, so no separate fixed-period grid is
   collected.
 
-## Duty-factor anchor spacing
-
-Trot and walk are trained and evaluated at differently spaced duty factors:
-
-| | Trot | Walk |
-|---|---|---|
-| Anchors | 0.50, 0.625, 0.75 | 0.75, 0.80, 0.85, 0.90 |
-| Step between anchors | 0.125 | 0.05 |
-| Swing difference between neighbours at 0.48 s | 3 control ticks | about 1 control tick |
-
-The only shared value is 0.75. At a 0.48 s period the walk schedules round to
-0.750, 0.833, 0.875 and 0.917, so the realized walk levels are unevenly spaced
-and change with period.
-
-**Why it matters**
-
-- **Neighbouring walk levels nearly merge once executed.** Their spacing is the
-  size of the controller's typical timing error. In the earlier specialist
-  data, walk 0.85 ran at 0.859 and walk 0.90 at 0.879. Push training shifts
-  duty factor slightly, which narrows the gap further.
-- **Resolution differs between gaits.** Trot trends and selector choices move
-  in 0.125 steps, walk in 0.05 steps. Trot curves look step-like and walk
-  curves smooth for that reason alone, and part of the U shape in the trot
-  selector comes from having only three candidates.
-- **Training exposure is not affected.** The gaits are separate policies, and
-  every anchor receives millions of training steps.
-
-**How to analyze with it**
+## Analyzing duty factor
 
 - Use the realized duty factor, `achieved_df`, as a continuous variable
-  instead of the anchor labels.
+  instead of the command labels. Discrete swing ticks round the commanded
+  schedule, so realized levels are unevenly spaced and change with period.
 - Compare trot and walk at matched realized duty factor, around 0.75 where the
   two ranges meet, as Investigation 1 does.
-- Before claiming a difference between neighbouring walk anchors, check that
+- Before claiming a difference between neighbouring duty factors, check that
   their `achieved_df` distributions actually separate.
-- Do not interpret differences in selector step size between gaits as a result.
 
 ## Outputs
 
 | Location | Content |
 |---|---|
-| `results/narrow_specialist_{trot,walk}_seed5_3072_<tag>/` | clean checkpoints |
-| `results/narrow_specialist_push_{trot,walk}_from_seed5_3072_<tag>/` | push fine-tune, segment 1 |
-| `results/narrow_specialist_push_{trot,walk}_seg2_3072_<tag>/` | push-trained checkpoints used for every evaluation |
+| `results/narrow_specialist_{trot,walk}_seed5_3072_<tag>/` | checkpoints used for every evaluation |
 | `results/validation_narrow_<gait>_v030_p<period>_<tag>/` | fidelity archives, tables, plots |
-| `results/<tag>_fidelity_gate.json` | gate report, including where in the gait phase contact deviates || `results/narrow_surfaces_sweep_<gait>_<tag>/grid/` | period-sweep archives and `surface_trials.csv` |
-| `results/push_robustness_narrow_<gait>_v030_p<period>_<tag>/` | pushed-trial archives and `perturbation_summary.json` |
-| `PAPER_GRAPHS/narrow_specialist/push_robustness/` | success against duty factor per width and period, `push_robustness_success.csv` |
-| `results/narrow_selector_<tag>/`, `..._promoted_<tag>/` | selector fit and validated checkpoint |
-| `PAPER_GRAPHS/narrow_specialist/` | figures |
-| `paper_data/specialist_narrow_<tag>/` | shareable export: per-trial CSVs, policy provenance, selector tables, figures |
+| `results/<tag>_fidelity_gate.json` | duty-contrast report, including where in the gait phase contact deviates |
+| `results/push_robustness_narrow_<gait>_v030_p<period>[_f50]_<tag>/` | pushed-trial archives and `perturbation_summary.json`, 25 N and 50 N levels |
+| `results/narrow_surfaces_sweep_<gait>_<tag>/grid/` | period-sweep archives and `surface_trials.csv` |
+| `results/narrow_selector_<tag>/`, `..._validation_<gait>_<tag>/`, `..._promoted_<tag>/` | selector fit, fresh validation and validated checkpoint |
+| `PAPER_GRAPHS/narrow_specialist/paper_figures/` | the five paper figures with their tables |
+| `paper_data/specialist_<tag>/` | shareable export: per-trial CSVs, robustness summaries (`trials/robustness_<gait>_v030_p<period>.json`), policy provenance, duty-contrast report, paper figures |
 | `results/<tag>.status` | one line per finished stage |
 
 `results/` and `PAPER_GRAPHS/` are not tracked. `paper_data/` is.
@@ -196,22 +182,19 @@ elsewhere, and `REPO_ROOT` when running a copy of the script from another
 directory. The script is resumable: completed stages are skipped, and a
 training stage without its final checkpoint is retrained from the start.
 
-Evaluation accepts a push-trained checkpoint only if the training source files
-(`PUSH_TRAINING_SOURCE_FILES` in `narrow_specialist_push.py`) still match the
-hash recorded at training time, so leave them unchanged while a run is in
-progress.
+Evaluation accepts a checkpoint only if the training source files
+(`NARROW_TRAINING_SOURCE_FILES` in `narrow_specialist.py`) still match the hash
+recorded at training time, so leave them unchanged while a run is in progress.
 
 ## Code map
 
 | File | Role |
 |---|---|
-| `source/beam_walking/beam_walking/experiment/narrow_specialist.py` | command ranges, anchors, sampler, lineage |
+| `source/beam_walking/beam_walking/experiment/narrow_specialist.py` | command ranges, training anchors, sampler, lineage |
 | `source/beam_walking/beam_walking/experiment/narrow_specialist_task.py` | environment config: self-collision, placement tolerance |
-| `source/beam_walking/beam_walking/experiment/narrow_specialist_push.py` | push fine-tune identity and parent verification |
-| `scripts/narrow_specialist_surface_data.py` | sweep definitions and checkpoint checks for the collector |
-| `source/beam_walking/beam_walking/experiment/unified_duty_selector.py` | selector model, labels, validation evidence |
-| `scripts/make_narrow_push_robustness_figures.py` | push-robustness figures and per-cell success table |
-| `scripts/export_push_outcomes.py` | tidy push-outcome export for the earlier push data |
+| `scripts/narrow_specialist_surface_data.py` | sweep definitions, evaluated duty factors, checkpoint checks for the collector |
+| `source/beam_walking/beam_walking/experiment/unified_duty_selector.py` | selector model, candidate levels, labels, validation evidence |
+| `scripts/make_narrow_paper_figures.py` | the five paper figures and their tables |
 
 ## Limitations
 
@@ -219,6 +202,7 @@ progress.
   validated against hardware.
 - Energy is positive mechanical joint work per distance. It omits motor
   heating, so it understates the cost of high-torque postures such as wide stance.
-- Fidelity runs use 0.30 m/s. The period sweep covers the other speeds.
+- Fidelity and robustness runs use 0.30 m/s. The period sweep covers the
+  other speeds.
 - Results are simulation on flat ground with commanded stance width; there is no
   physical narrow support.

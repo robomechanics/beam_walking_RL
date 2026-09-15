@@ -1,0 +1,878 @@
+{
+  "schema": "unified_selector_validation_v1",
+  "smoke": false,
+  "paper_claims_allowed": false,
+  "chi_computed": false,
+  "selector_checkpoint": "/home/rml2/Documents/thomas_practice/beam_walking_RL/results/narrow_selector_narrow_20260914/unified_duty_selector.pt",
+  "selector_checkpoint_sha256": "8c670ec4ff3e36d3e0dc36174bda1e7d553f06ca3e631ee595e9e1935255591c",
+  "period_sweep": false,
+  "gaits": [
+    "trot"
+  ],
+  "scientific_role": "narrow_stance_single_gait_specialist_surface",
+  "task_variant": "specialist",
+  "width_range_m": [
+    0.05,
+    0.3
+  ],
+  "width_levels_m": [
+    0.05,
+    0.1,
+    0.15,
+    0.2,
+    0.25,
+    0.3
+  ],
+  "trot_training_duties": [
+    0.5,
+    0.625,
+    0.75
+  ],
+  "walk_training_duties": [
+    0.75,
+    0.8,
+    0.85,
+    0.9
+  ],
+  "selector_candidate_duties": {
+    "trot": [
+      0.5,
+      0.55,
+      0.6,
+      0.65,
+      0.7,
+      0.75
+    ],
+    "walk": [
+      0.75,
+      0.8,
+      0.85,
+      0.9
+    ]
+  },
+  "walk_unseen_duties": [],
+  "terrain": "flat_ground",
+  "external_pushes": false,
+  "nominal_motor_gains": true,
+  "conditions": [
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.36,
+      "step_width": 0.05,
+      "command_df": 0.6,
+      "filename": "selector_trot_v0.250_p0.36_w0.050_d0.600.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.4,
+      "step_width": 0.05,
+      "command_df": 0.6,
+      "filename": "selector_trot_v0.250_p0.40_w0.050_d0.600.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.05,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.250_p0.48_w0.050_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.54,
+      "step_width": 0.05,
+      "command_df": 0.6,
+      "filename": "selector_trot_v0.250_p0.54_w0.050_d0.600.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.36,
+      "step_width": 0.05,
+      "command_df": 0.6,
+      "filename": "selector_trot_v0.300_p0.36_w0.050_d0.600.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.4,
+      "step_width": 0.05,
+      "command_df": 0.6,
+      "filename": "selector_trot_v0.300_p0.40_w0.050_d0.600.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.05,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.300_p0.48_w0.050_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.54,
+      "step_width": 0.05,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.300_p0.54_w0.050_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.36,
+      "step_width": 0.05,
+      "command_df": 0.6,
+      "filename": "selector_trot_v0.350_p0.36_w0.050_d0.600.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.4,
+      "step_width": 0.05,
+      "command_df": 0.6,
+      "filename": "selector_trot_v0.350_p0.40_w0.050_d0.600.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.05,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.350_p0.48_w0.050_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.54,
+      "step_width": 0.05,
+      "command_df": 0.6,
+      "filename": "selector_trot_v0.350_p0.54_w0.050_d0.600.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.36,
+      "step_width": 0.05,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.400_p0.36_w0.050_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.4,
+      "step_width": 0.05,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.400_p0.40_w0.050_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.05,
+      "command_df": 0.6,
+      "filename": "selector_trot_v0.400_p0.48_w0.050_d0.600.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.54,
+      "step_width": 0.05,
+      "command_df": 0.6,
+      "filename": "selector_trot_v0.400_p0.54_w0.050_d0.600.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.36,
+      "step_width": 0.1,
+      "command_df": 0.65,
+      "filename": "selector_trot_v0.250_p0.36_w0.100_d0.650.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.4,
+      "step_width": 0.1,
+      "command_df": 0.65,
+      "filename": "selector_trot_v0.250_p0.40_w0.100_d0.650.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.250_p0.48_w0.100_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.54,
+      "step_width": 0.1,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.250_p0.54_w0.100_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.36,
+      "step_width": 0.1,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.300_p0.36_w0.100_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.4,
+      "step_width": 0.1,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.300_p0.40_w0.100_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.5,
+      "filename": "selector_trot_v0.300_p0.48_w0.100_d0.500.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.54,
+      "step_width": 0.1,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.300_p0.54_w0.100_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.36,
+      "step_width": 0.1,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.350_p0.36_w0.100_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.4,
+      "step_width": 0.1,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.350_p0.40_w0.100_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.5,
+      "filename": "selector_trot_v0.350_p0.48_w0.100_d0.500.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.54,
+      "step_width": 0.1,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.350_p0.54_w0.100_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.36,
+      "step_width": 0.1,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.400_p0.36_w0.100_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.4,
+      "step_width": 0.1,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.400_p0.40_w0.100_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.1,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.400_p0.48_w0.100_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.54,
+      "step_width": 0.1,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.400_p0.54_w0.100_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.36,
+      "step_width": 0.15,
+      "command_df": 0.65,
+      "filename": "selector_trot_v0.250_p0.36_w0.150_d0.650.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.4,
+      "step_width": 0.15,
+      "command_df": 0.6,
+      "filename": "selector_trot_v0.250_p0.40_w0.150_d0.600.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.15,
+      "command_df": 0.6,
+      "filename": "selector_trot_v0.250_p0.48_w0.150_d0.600.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.54,
+      "step_width": 0.15,
+      "command_df": 0.6,
+      "filename": "selector_trot_v0.250_p0.54_w0.150_d0.600.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.36,
+      "step_width": 0.15,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.300_p0.36_w0.150_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.4,
+      "step_width": 0.15,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.300_p0.40_w0.150_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.15,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.300_p0.48_w0.150_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.54,
+      "step_width": 0.15,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.300_p0.54_w0.150_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.36,
+      "step_width": 0.15,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.350_p0.36_w0.150_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.4,
+      "step_width": 0.15,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.350_p0.40_w0.150_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.15,
+      "command_df": 0.5,
+      "filename": "selector_trot_v0.350_p0.48_w0.150_d0.500.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.54,
+      "step_width": 0.15,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.350_p0.54_w0.150_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.36,
+      "step_width": 0.15,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.400_p0.36_w0.150_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.4,
+      "step_width": 0.15,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.400_p0.40_w0.150_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.15,
+      "command_df": 0.5,
+      "filename": "selector_trot_v0.400_p0.48_w0.150_d0.500.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.54,
+      "step_width": 0.15,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.400_p0.54_w0.150_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.36,
+      "step_width": 0.2,
+      "command_df": 0.65,
+      "filename": "selector_trot_v0.250_p0.36_w0.200_d0.650.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.4,
+      "step_width": 0.2,
+      "command_df": 0.6,
+      "filename": "selector_trot_v0.250_p0.40_w0.200_d0.600.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.6,
+      "filename": "selector_trot_v0.250_p0.48_w0.200_d0.600.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.54,
+      "step_width": 0.2,
+      "command_df": 0.6,
+      "filename": "selector_trot_v0.250_p0.54_w0.200_d0.600.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.36,
+      "step_width": 0.2,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.300_p0.36_w0.200_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.4,
+      "step_width": 0.2,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.300_p0.40_w0.200_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.300_p0.48_w0.200_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.54,
+      "step_width": 0.2,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.300_p0.54_w0.200_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.36,
+      "step_width": 0.2,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.350_p0.36_w0.200_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.4,
+      "step_width": 0.2,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.350_p0.40_w0.200_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.5,
+      "filename": "selector_trot_v0.350_p0.48_w0.200_d0.500.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.54,
+      "step_width": 0.2,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.350_p0.54_w0.200_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.36,
+      "step_width": 0.2,
+      "command_df": 0.6,
+      "filename": "selector_trot_v0.400_p0.36_w0.200_d0.600.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.4,
+      "step_width": 0.2,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.400_p0.40_w0.200_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.2,
+      "command_df": 0.5,
+      "filename": "selector_trot_v0.400_p0.48_w0.200_d0.500.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.54,
+      "step_width": 0.2,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.400_p0.54_w0.200_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.36,
+      "step_width": 0.25,
+      "command_df": 0.6,
+      "filename": "selector_trot_v0.250_p0.36_w0.250_d0.600.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.4,
+      "step_width": 0.25,
+      "command_df": 0.7,
+      "filename": "selector_trot_v0.250_p0.40_w0.250_d0.700.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.25,
+      "command_df": 0.6,
+      "filename": "selector_trot_v0.250_p0.48_w0.250_d0.600.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.54,
+      "step_width": 0.25,
+      "command_df": 0.6,
+      "filename": "selector_trot_v0.250_p0.54_w0.250_d0.600.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.36,
+      "step_width": 0.25,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.300_p0.36_w0.250_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.4,
+      "step_width": 0.25,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.300_p0.40_w0.250_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.25,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.300_p0.48_w0.250_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.54,
+      "step_width": 0.25,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.300_p0.54_w0.250_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.36,
+      "step_width": 0.25,
+      "command_df": 0.6,
+      "filename": "selector_trot_v0.350_p0.36_w0.250_d0.600.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.4,
+      "step_width": 0.25,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.350_p0.40_w0.250_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.25,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.350_p0.48_w0.250_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.54,
+      "step_width": 0.25,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.350_p0.54_w0.250_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.36,
+      "step_width": 0.25,
+      "command_df": 0.6,
+      "filename": "selector_trot_v0.400_p0.36_w0.250_d0.600.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.4,
+      "step_width": 0.25,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.400_p0.40_w0.250_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.25,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.400_p0.48_w0.250_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.54,
+      "step_width": 0.25,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.400_p0.54_w0.250_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.36,
+      "step_width": 0.3,
+      "command_df": 0.65,
+      "filename": "selector_trot_v0.250_p0.36_w0.300_d0.650.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.4,
+      "step_width": 0.3,
+      "command_df": 0.6,
+      "filename": "selector_trot_v0.250_p0.40_w0.300_d0.600.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.6,
+      "filename": "selector_trot_v0.250_p0.48_w0.300_d0.600.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.25,
+      "period": 0.54,
+      "step_width": 0.3,
+      "command_df": 0.6,
+      "filename": "selector_trot_v0.250_p0.54_w0.300_d0.600.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.36,
+      "step_width": 0.3,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.300_p0.36_w0.300_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.4,
+      "step_width": 0.3,
+      "command_df": 0.6,
+      "filename": "selector_trot_v0.300_p0.40_w0.300_d0.600.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.300_p0.48_w0.300_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.3,
+      "period": 0.54,
+      "step_width": 0.3,
+      "command_df": 0.6,
+      "filename": "selector_trot_v0.300_p0.54_w0.300_d0.600.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.36,
+      "step_width": 0.3,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.350_p0.36_w0.300_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.4,
+      "step_width": 0.3,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.350_p0.40_w0.300_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.350_p0.48_w0.300_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.35,
+      "period": 0.54,
+      "step_width": 0.3,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.350_p0.54_w0.300_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.36,
+      "step_width": 0.3,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.400_p0.36_w0.300_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.4,
+      "step_width": 0.3,
+      "command_df": 0.6,
+      "filename": "selector_trot_v0.400_p0.40_w0.300_d0.600.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.48,
+      "step_width": 0.3,
+      "command_df": 0.55,
+      "filename": "selector_trot_v0.400_p0.48_w0.300_d0.550.npz"
+    },
+    {
+      "gait": "trot",
+      "speed": 0.4,
+      "period": 0.54,
+      "step_width": 0.3,
+      "command_df": 0.75,
+      "filename": "selector_trot_v0.400_p0.54_w0.300_d0.750.npz"
+    }
+  ],
+  "trials_per_condition": 32,
+  "total_cycles": 12,
+  "discarded_cycles": 8,
+  "measurement_cycles": 4,
+  "periodicity_definition": "max normalized 46D orbital RMS over four consecutive phase-zero differences",
+  "periodicity_limit": 0.02,
+  "energy_valid_trial_rate_min": 0.9,
+  "automatic_support_failure_termination": false,
+  "failure_handling": "latch failures over all twelve cycles; exclude from valid endpoints",
+  "seed_start": 1520000,
+  "seeds": [
+    1520000,
+    1520001,
+    1520002,
+    1520003,
+    1520004,
+    1520005,
+    1520006,
+    1520007,
+    1520008,
+    1520009,
+    1520010,
+    1520011,
+    1520012,
+    1520013,
+    1520014,
+    1520015,
+    1520016,
+    1520017,
+    1520018,
+    1520019,
+    1520020,
+    1520021,
+    1520022,
+    1520023,
+    1520024,
+    1520025,
+    1520026,
+    1520027,
+    1520028,
+    1520029,
+    1520030,
+    1520031
+  ],
+  "stance_start_probability": 0.1,
+  "stance_start_realized_count": 2,
+  "checkpoint": "/home/rml2/Documents/thomas_practice/beam_walking_RL/results/narrow_specialist_trot_seed5_3072_narrow_20260914/model_1799.pt",
+  "checkpoint_sha256": "80e982119aecd259aa2852b32e7498833f59b26b37e3ea032e5809c7443190a2",
+  "training_provenance_sha256": "1941b65ac8591d0e2b68982880773713c12b36c85a558707934677d7750c0d69",
+  "task_sha256": "3441391b90facff2c80eeae4a49b522744e3cb37d54337f31377db1551952dcc",
+  "collector_sha256": "70dffc7ea626319024fc2d69605f6f886c77f83f301033520e5a9358bfcc8565"
+}

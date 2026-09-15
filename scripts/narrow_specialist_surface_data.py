@@ -23,6 +23,24 @@ from unified_surface_data import (  # noqa: E402,F401
     VALIDATION_SEED, feasible_duties, sha256, summarize, validate_measurement,
 )
 
+# Training anchors are 0.50/0.625/0.75 for trot, with duty drawn continuously
+# over 0.50-0.75 during training. Sweeps and the selector use candidates every
+# 0.05 for both gaits.
+TRAINING_DUTIES_BY_GAIT = DUTIES_BY_GAIT
+DUTIES_BY_GAIT = {"trot": (.50, .55, .60, .65, .70, .75), "walk": (.75, .80, .85, .90)}
+DUTIES = tuple(sorted(set(DUTIES_BY_GAIT["trot"]) | set(DUTIES_BY_GAIT["walk"])))
+
+
+def feasible_duties(gait, period):
+    """Candidate duty factors of a gait that respect its swing bound at a period."""
+    import torch
+    from beam_walking.experiment.protocol import CONTROL_DT
+    from beam_walking.experiment.unified_gait import max_duty_for_period
+    ticks = round(period / CONTROL_DT)
+    cap = float(max_duty_for_period(torch.tensor([GAITS.index(gait)]), torch.tensor([ticks])))
+    return tuple(d for d in DUTIES_BY_GAIT[gait] if d <= cap + 1e-6)
+
+
 WIDTHS = tuple(NARROW_WIDTH_ANCHORS)
 CHECKPOINT = None
 CHECKPOINT_SHA256 = None
@@ -41,8 +59,9 @@ MANIFEST_EXTRA = dict(
     task_variant="specialist",
     width_range_m=list(NARROW_WIDTH_RANGE),
     width_levels_m=list(WIDTHS),
-    trot_training_duties=list(DUTIES_BY_GAIT["trot"]),
-    walk_training_duties=list(DUTIES_BY_GAIT["walk"]),
+    trot_training_duties=list(TRAINING_DUTIES_BY_GAIT["trot"]),
+    walk_training_duties=list(TRAINING_DUTIES_BY_GAIT["walk"]),
+    selector_candidate_duties={g: list(DUTIES_BY_GAIT[g]) for g in GAITS},
     walk_unseen_duties=[],
 )
 

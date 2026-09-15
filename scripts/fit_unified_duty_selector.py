@@ -179,6 +179,8 @@ def main():
     _manifest = _json.loads((args.trials[0].parent / "surface_manifest.json").read_text())
     if _manifest.get("width_range_m"):
         _selector.set_width_range(_manifest["width_range_m"])
+    if _manifest.get("selector_candidate_duties"):
+        _selector.set_gait_levels(_manifest["selector_candidate_duties"])
     rows, grids = [], []
     for trials_path in args.trials:
         grid_rows, manifest, hashes = validate_completed_surface_grid(trials_path)

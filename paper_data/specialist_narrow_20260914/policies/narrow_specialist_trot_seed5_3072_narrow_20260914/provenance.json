@@ -1,0 +1,100 @@
+{
+  "schema": "narrow_specialist_training_v1",
+  "argv": [
+    "scripts/narrow_specialist_experiment.py",
+    "train",
+    "--gait",
+    "trot",
+    "--headless",
+    "--output",
+    "results/narrow_specialist_trot_seed5_3072_narrow_20260914"
+  ],
+  "mode": "train",
+  "seed": 5,
+  "terrain": "flat_ground",
+  "terrain_width_input": false,
+  "step_width_is_commanded_foot_separation": true,
+  "gaits": [
+    "trot"
+  ],
+  "specialist_gait": "trot",
+  "gait_balance": "single_gait",
+  "protocol": "narrow_stance_single_gait_specialist",
+  "step_width_range_m": [
+    0.05,
+    0.3
+  ],
+  "step_width_anchors_m": [
+    0.05,
+    0.1,
+    0.15,
+    0.2,
+    0.25,
+    0.3
+  ],
+  "narrow_beam_extension": {
+    "min_step_width": 0.05,
+    "max_step_width": 0.3,
+    "width_tolerance_sigma_m": 0.03,
+    "observation_normalization_range": [
+      0.1,
+      0.5
+    ],
+    "self_collisions": true,
+    "domain_randomization": false
+  },
+  "self_collisions": true,
+  "domain_randomization": false,
+  "trot_duty_range": [
+    0.5,
+    0.75
+  ],
+  "walk_duty_range": [
+    0.75,
+    0.9
+  ],
+  "balanced_strata": [
+    [
+      0,
+      0.5
+    ],
+    [
+      0,
+      0.625
+    ],
+    [
+      0,
+      0.75
+    ]
+  ],
+  "anchor_period_s": 0.48,
+  "trot_period_control_ticks": [
+    18,
+    27
+  ],
+  "walk_period_control_ticks": [
+    20,
+    27
+  ],
+  "trot_minimum_requested_swing_control_ticks": 5,
+  "walk_minimum_requested_swing_control_ticks": 2,
+  "motor_gain_randomization": false,
+  "stance_start_probability": 0.1,
+  "fresh_training": true,
+  "primary_training_protocol": true,
+  "warm_start": false,
+  "task_sha256": "3441391b90facff2c80eeae4a49b522744e3cb37d54337f31377db1551952dcc",
+  "training_source_sha256": "7fcddb00bfc4a085f913684bad42d12e216a58cc4820039aea417fd21054ed98",
+  "training_lineage_id": "861a7014fb266372e15ce7ba4012c75547f58428d73eaa98cdf97f2caa9e4682",
+  "training_num_envs": 3072,
+  "training_iterations_requested": 1800,
+  "checkpoint_selection_rule": "final_requested_iteration",
+  "watcher_enabled": true,
+  "versions": {
+    "torch": "2.7.0+cu128",
+    "isaaclab": "0.42.25",
+    "isaacsim": "5.1.0.0",
+    "rsl-rl-lib": "3.0.1"
+  },
+  "gpu": "NVIDIA GeForce RTX 5070 Ti"
+}

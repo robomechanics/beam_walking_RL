@@ -1,0 +1,22 @@
+{
+  "schema": "unified_selector_validation_report_v1",
+  "contexts": 132,
+  "passed_contexts": 132,
+  "all_contexts_passed": true,
+  "max_selected_vs_achieved_error": 0.033333333333333326,
+  "selected_levels_per_gait": {
+    "trot": [
+      0.5,
+      0.55,
+      0.6,
+      0.65,
+      0.7,
+      0.75
+    ],
+    "walk": [
+      0.8,
+      0.85
+    ]
+  },
+  "validated_selector": "/home/rml2/Documents/thomas_practice/beam_walking_RL/results/narrow_selector_promoted_narrow_20260914/validated_unified_duty_selector.pt"
+}

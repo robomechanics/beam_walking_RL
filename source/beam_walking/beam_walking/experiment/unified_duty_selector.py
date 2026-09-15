@@ -52,8 +52,20 @@ def set_width_range(width_range):
         raise ValueError(f"Invalid selector width range: {width_range}")
     WIDTH_RANGE = (low, high)
 GAIT_LEVELS = {"trot": tuple(TROT_DUTY_LEVELS), "walk": tuple(WALK_DUTY_LEVELS)}
-# Class index space: every (gait, duty) pair the unified policy was trained on.
+# Class index space: every (gait, duty) candidate of the grid being fitted.
 LEVELS = tuple((gait, duty) for gait in GAITS for duty in GAIT_LEVELS[gait])
+
+
+def set_gait_levels(gait_levels):
+    """Candidate duty factors per gait. Grids that sweep other candidates set them
+    from their manifest, and checkpoints restore them."""
+    global LEVELS
+    levels = {gait: tuple(float(duty) for duty in gait_levels[gait]) for gait in GAITS}
+    if any(not values or list(values) != sorted(values) for values in levels.values()):
+        raise ValueError(f"Invalid selector candidate levels: {gait_levels}")
+    GAIT_LEVELS.clear()
+    GAIT_LEVELS.update(levels)
+    LEVELS = tuple((gait, duty) for gait in GAITS for duty in GAIT_LEVELS[gait])
 PRIMARY_TRIALS_PER_CANDIDATE = 32
 SELECTOR_SCHEMA = "unified_duty_selector_v2"
 SURFACE_SCHEMA = "unified_surface_v1"
@@ -422,8 +434,7 @@ def load_selector(path, device="cpu"):
     set_width_range(payload["input_ranges"]["step_width"])
     if payload["input_fields"] != ["step_width", "speed", "period", "gait_id"]:
         raise ValueError("Selector input fields differ from this implementation")
-    if payload["gait_levels"] != {g: list(l) for g, l in GAIT_LEVELS.items()}:
-        raise ValueError("Selector candidate levels differ from this implementation")
+    set_gait_levels(payload["gait_levels"])
     if payload["gait_min_period_ticks"] != list(GAIT_MIN_PERIOD_TICKS):
         raise ValueError("Selector period floors differ from this implementation")
     if payload["selector_source_sha256"] != _sha256(Path(__file__)):
@@ -486,7 +497,7 @@ def load_selector(path, device="cpu"):
 
 
 __all__ = [
-    "CONTEXT_FIELDS", "GAIT_LEVELS", "LEVELS", "PERIOD_RANGE",
+    "CONTEXT_FIELDS", "GAIT_LEVELS", "LEVELS", "PERIOD_RANGE", "set_gait_levels",
     "PRIMARY_TRIALS_PER_CANDIDATE", "SELECTOR_SCHEMA", "VALIDATION_SCHEMA",
     "VALIDATION_COMPLETE_SCHEMA", "UnifiedDutySelector",
     "aggregate_candidates", "bootstrap_target_intervals", "duty_cap",

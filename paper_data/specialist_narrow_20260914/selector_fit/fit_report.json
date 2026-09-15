@@ -1,0 +1,37 @@
+{
+  "schema": "unified_duty_selector_fit_v1",
+  "contexts": 132,
+  "rejected_contexts": 36,
+  "contexts_per_gait": {
+    "trot": 96,
+    "walk": 36
+  },
+  "periods": [
+    0.36,
+    0.4,
+    0.48,
+    0.54
+  ],
+  "selected_levels_per_gait": {
+    "trot": [
+      0.5,
+      0.55,
+      0.6,
+      0.65,
+      0.7,
+      0.75
+    ],
+    "walk": [
+      0.8,
+      0.85
+    ]
+  },
+  "final_training_cross_entropy": 8.709078247193247e-05,
+  "fresh_selector_rollout_validation_required": true,
+  "exploratory": false,
+  "grid_checkpoint_sha256": {
+    "trot": "80e982119aecd259aa2852b32e7498833f59b26b37e3ea032e5809c7443190a2",
+    "walk": "8f20904a471667bbce7f9c90da79d1def67a90a53e431b5259a4cc2acec0969a"
+  },
+  "selector_checkpoint_sha256": "8c670ec4ff3e36d3e0dc36174bda1e7d553f06ca3e631ee595e9e1935255591c"
+}
