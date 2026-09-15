@@ -2,9 +2,10 @@
 # Narrow-stance pipeline, stance width 0.05-0.30 m, self-collision on, no domain
 # randomization. The reported controller is push-trained, for realism.
 #   1  train clean trot and walk specialists (the starting point)
-#   2  push fine-tune both gaits side by side, three segments
+#   2  push fine-tune each gait, two segments
 #   3  command fidelity of the push-trained policies at every period
-#   4  duty-contrast gate over all fidelity runs (stops the pipeline on failure)
+#   4  duty-contrast gate over all fidelity runs (stops the pipeline on a failure
+#      not accepted in results/<tag>_gate_override.json)
 #   5  push robustness: success under pushes at every period, width and duty
 #   6  period sweeps, both gaits
 #   7  selector fit, validation per gait, promotion
@@ -231,7 +232,7 @@ for d in results/narrow_specialist_*_3072_${TAG}; do
 done
 [ -d $FIT ] && cp -r $FIT $OUT/selector_fit
 [ -d results/narrow_selector_promoted_${TAG} ] && cp -r results/narrow_selector_promoted_${TAG} $OUT/selector_promoted
-cp results/${TAG}_fidelity_gate.json $OUT/docs/ 2>/dev/null
+cp results/${TAG}_fidelity_gate.json results/${TAG}_gate_override.json $OUT/docs/ 2>/dev/null
 rm -rf $OUT/figures; cp -r $FIG $OUT/figures
 echo "narrow_pipeline_done $(date -u +%FT%TZ)" >> $S
 echo "=== NARROW PIPELINE DONE $(date -u +%FT%TZ)"

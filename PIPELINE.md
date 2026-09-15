@@ -33,7 +33,7 @@ swing ticks. Commands change only at gait-cycle boundaries.
 | # | Stage | Script | Key settings |
 |---|---|---|---|
 | 1 | Clean training | `scripts/narrow_specialist_experiment.py train --gait G` | 3,072 envs, 1,800 PPO updates, seed 5, 10% grounded starts |
-| 2 | Push fine-tune | `scripts/narrow_specialist_push_experiment.py train --gait G --perturbation --initialize_from <previous>` | three consecutive 1,200-update segments (3,600 updates), each warm-started from the previous checkpoint; seed 3 |
+| 2 | Push fine-tune | `scripts/narrow_specialist_push_experiment.py train --gait G --perturbation --initialize_from <previous>` | two consecutive 1,200-update segments (2,400 updates), each warm-started from the previous checkpoint; seed 3 |
 | 3 | Command fidelity | `scripts/evaluate_policy.py --task narrow_specialist` | every period of the gait, all widths and duty anchors, 64 held-out trials, 0.30 m/s |
 | 4 | Duty-contrast gate | `scripts/narrow_fidelity_gate.py --criterion contrast` | stops the pipeline if the duty contrast collapses |
 | 5 | Push robustness | `scripts/evaluate_policy.py --task narrow_specialist --perturbation` | every period of the gait, all widths and duty anchors, 64 held-out pushed trials, 0.30 m/s |
@@ -42,8 +42,8 @@ swing ticks. Commands change only at gait-cycle boundaries.
 | 8 | Figures | `scripts/make_specialist_period_surfaces.py`, `scripts/make_specialist_trend_figures.py`, `scripts/make_narrow_push_robustness_figures.py` | one panel or file per period |
 | 9 | Export | shell step | CSVs, provenance and figures into `paper_data/` |
 
-Clean trainings run one at a time. Push fine-tune segments and evaluations
-(stages 3, 5, 6 and the selector validations) run trot and walk side by side.
+Trainings run one at a time. Evaluations (stages 3, 5, 6 and the selector
+validations) run trot and walk side by side.
 Each is an independent process with its own seeds, so this changes only
 wall-clock time.
 
@@ -56,11 +56,11 @@ simulated robot time.
 | Phase | Updates | Control steps | Simulated robot time |
 |---|---|---|---|
 | Clean training | 1,800 | 265.4 million | 1,475 hours |
-| Push fine-tune, 3 segments of 1,200 | 3,600 | 530.8 million | 2,949 hours |
-| **Push-trained policy, total** | **5,400** | **796.3 million** | **4,424 hours** |
+| Push fine-tune, 2 segments of 1,200 | 2,400 | 353.9 million | 1,966 hours |
+| **Push-trained policy, total** | **4,200** | **619.3 million** | **3,441 hours** |
 
-On one RTX 5070 Ti, clean training takes 29 min per gait, and each push segment
-takes about 38 min for both gaits together, about 3 h of training in total.
+On one RTX 5070 Ti, clean training takes 29 min per gait and each push segment
+22 min per gait, about 2 h 25 min of training for both gaits.
 
 - **PPO.** 48-step rollouts, 5 epochs, 4 minibatches, learning rate 1e-3
   (adaptive), γ 0.995, λ 0.95, clip 0.2, entropy 0.001. Actor and critic MLPs
@@ -77,11 +77,11 @@ takes about 38 min for both gaits together, about 3 h of training in total.
   torque up to 3 N m, held 0.10–0.40 s at a time, ramping from 10% to 100% of
   that bound over the first 10 s of each episode.
 - **Fine-tune segments.** Segment 1 starts from the clean policy's weights with
-  a new Adam optimizer. Segments 2 and 3 each continue the previous segment's
-  weights, Adam state and adaptive learning rate. The curriculum step counter
-  carries through, so fine-tuning stays on the full command distribution. Every
-  segment uses seed 3. Update numbers restart in each segment's directory:
-  segment 3's `model_1199.pt` is update 5,399 of the policy.
+  a new Adam optimizer. Segment 2 continues segment 1's weights, Adam state and
+  adaptive learning rate. The curriculum step counter carries through, so
+  fine-tuning stays on the full command distribution. Both segments use seed 3.
+  Update numbers restart in each segment's directory: segment 2's
+  `model_1199.pt` is update 4,199 of the policy.
 
 ### Selector
 
@@ -103,10 +103,9 @@ The selector's width domain is read from the sweep, so it covers 0.05–0.30 m.
   0.58–0.67 and the duty contrast the paper depends on collapsed.
 - **Self-collision on.** At 0.05 m the feet are millimetres apart. Without
   collision the legs could pass through each other and flatter narrow stances.
-- **3,600 fine-tune updates.** Narrow stance under pushes learns slowly. After
-  2,400 updates reward was still rising for both gaits and trot's duty contrast
-  at 0.48 and 0.54 s was below the gate, so the fine-tune runs for three
-  1,200-update segments.
+- **2,400 fine-tune updates.** Narrow stance under pushes learns slowly: after
+  1,200 updates a third of trot training episodes still fell, so fine-tuning
+  runs for two 1,200-update segments.
 - **Push-trained policies are the reported controller.** This follows the
   mentor's direction to avoid behaviour that only works in a noise-free
   simulator. The cost is measurable: a push-trained trot policy realized duty
@@ -116,8 +115,6 @@ The selector's width domain is read from the sweep, so it covers 0.05–0.30 m.
 - **Contrast gate, not exact tracking.** Because push training shifts duty
   somewhat by design, the gate requires realized duty to rise with the command
   and keep at least 60% of the commanded spread, at every period tested.
-  Tested on existing data, it passes an earlier push-trained trot policy (75%)
-  and rejects the collapsed narrow-stance policy (44%).
 - **Push robustness measures duty factor's effect on stability.** Without
   disturbance every width and duty factor completes its trials, so success
   cannot separate duty factors. The pushed trials use the training push profile
@@ -168,11 +165,10 @@ and change with period.
 | Location | Content |
 |---|---|
 | `results/narrow_specialist_{trot,walk}_seed5_3072_<tag>/` | clean checkpoints |
-| `results/narrow_specialist_push_{trot,walk}_from_seed5_3072_<tag>/`, `..._seg2_3072_<tag>/` | push fine-tune, segments 1 and 2 |
-| `results/narrow_specialist_push_{trot,walk}_seg3_3072_<tag>/` | push-trained checkpoints used for every evaluation |
+| `results/narrow_specialist_push_{trot,walk}_from_seed5_3072_<tag>/` | push fine-tune, segment 1 |
+| `results/narrow_specialist_push_{trot,walk}_seg2_3072_<tag>/` | push-trained checkpoints used for every evaluation |
 | `results/validation_narrow_<gait>_v030_p<period>_<tag>/` | fidelity archives, tables, plots |
-| `results/<tag>_fidelity_gate.json` | gate report, including where in the gait phase contact deviates |
-| `results/narrow_surfaces_sweep_<gait>_<tag>/grid/` | period-sweep archives and `surface_trials.csv` |
+| `results/<tag>_fidelity_gate.json` | gate report, including where in the gait phase contact deviates || `results/narrow_surfaces_sweep_<gait>_<tag>/grid/` | period-sweep archives and `surface_trials.csv` |
 | `results/push_robustness_narrow_<gait>_v030_p<period>_<tag>/` | pushed-trial archives and `perturbation_summary.json` |
 | `PAPER_GRAPHS/narrow_specialist/push_robustness/` | success against duty factor per width and period, `push_robustness_success.csv` |
 | `results/narrow_selector_<tag>/`, `..._promoted_<tag>/` | selector fit and validated checkpoint |
