@@ -58,7 +58,8 @@ def save(fig, out, stem, rows):
     if fig.get_layout_engine() is None:
         fig.tight_layout()
     for ext in ("png", "pdf"):
-        fig.savefig(out / f"{stem}.{ext}", dpi=200)
+        # no PDF creation date, so regenerating unchanged figures leaves the files unchanged
+        fig.savefig(out / f"{stem}.{ext}", dpi=200, metadata={"CreationDate": None} if ext == "pdf" else None)
     plt.close(fig)
     with (out / f"{stem}.csv").open("w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=list(rows[0]))
@@ -307,7 +308,8 @@ def optimal_duty(stats):
 def figure_optimal_duty(results, tag, out):
     """Per gait and stance width, the duty factor minimizing undisturbed CoT (period sweep at the
     robustness speed) divided by success rate under disturbance, pooled over the periods at which
-    every duty factor ran. The interval resamples trials within each period and duty factor."""
+    every duty factor ran. CoT is the mean over those periods of each period's mean, since the score
+    is an expected energy. The interval resamples trials within each period and duty factor."""
     rng = np.random.default_rng(0)
     table, curves = [], {}
     for gait in GAITS:
@@ -322,33 +324,44 @@ def figure_optimal_duty(results, tag, out):
             for c in summaries[p]:
                 if c["trials"]:
                     success[(round(c["step_width"], 2), round(c["df"], 3))].append((c["success"], c["trials"]))
-        cot = defaultdict(list)
+        swept, cot = set(), defaultdict(list)     # cot: (period, width, duty) -> CoT per completed trial
         for r in csv.DictReader((results / f"narrow_surfaces_sweep_{gait}_{tag}/grid/surface_trials.csv").open()):
+            key = (round(float(r["period"]), 2), round(float(r["step_width"]), 2), round(float(r["command_df"]), 3))
+            if round(float(r["speed"]), 2) != ROBUSTNESS_SPEED or key[0] not in keep:
+                continue
+            swept.add(key)
             c = r["positive_mechanical_cot"]
-            if (round(float(r["speed"]), 2) == ROBUSTNESS_SPEED and round(float(r["period"]), 2) in keep
-                    and r["any_failure"] not in ("1", "True") and c not in ("", "nan") and float(c) > 0):
-                cot[(round(float(r["step_width"]), 2), round(float(r["command_df"]), 3))].append(float(c))
+            if r["any_failure"] not in ("1", "True") and c and math.isfinite(float(c)) and float(c) > 0:
+                cot[key].append(float(c))
+        unswept = sorted({(p, w, d) for w, d in success for p in keep} - swept)
+        if unswept:
+            raise ValueError(f"{gait}: robustness cells missing from the period sweep: {unswept}")
         curves[gait] = {}
         for w in sorted({w for w, _ in success}):
-            duties = sorted(d for (wi, d) in success if wi == w and cot[(w, d)])
-            stats = {d: (sum(k for k, _ in success[(w, d)]), sum(n for _, n in success[(w, d)]),
-                         st.median(cot[(w, d)])) for d in duties}
+            duties = sorted(d for (wi, d) in success if wi == w)
+            counts = {d: (sum(k for k, _ in success[(w, d)]), sum(n for _, n in success[(w, d)])) for d in duties}
+            # a duty factor with no completed undisturbed trial in some period has no CoT and is not a candidate
+            priced = [d for d in duties if all(cot[(p, w, d)] for p in keep)]
+            stats = {d: counts[d] + (float(np.mean([np.mean(cot[(p, w, d)]) for p in keep])),) for d in priced}
             chosen = optimal_duty(stats)
             draws = []
             for _ in range(BOOTSTRAP):
                 draws.append(optimal_duty({d: (sum(int(rng.binomial(n, k / n)) for k, n in success[(w, d)]),
                                                stats[d][1],
-                                               float(np.median(rng.choice(cot[(w, d)], len(cot[(w, d)])))))
-                                           for d in duties}))
-            draws = sorted(x for x in draws if x is not None)
-            low, high = (draws[int(.025 * len(draws))], draws[min(len(draws) - 1, int(.975 * len(draws)))]) \
+                                               float(np.mean([rng.choice(cot[(p, w, d)], len(cot[(p, w, d)])).mean()
+                                                              for p in keep])))
+                                           for d in priced}))
+            draws = [x for x in draws if x is not None]
+            low, high = (float(q) for q in np.quantile(draws, [.025, .975], method="inverted_cdf")) \
                 if chosen is not None and draws else (None, None)
             curves[gait][w] = (chosen, low, high)
             for d in duties:
-                s, n, c = stats[d]
+                s, n = counts[d]
+                c = stats[d][2] if d in stats else None
                 table.append({"gait": gait, "step_width": w, "command_df": d, "success": s, "trials": n,
-                              "success_rate": s / n, "cot_median": c, "cot_trials": len(cot[(w, d)]),
-                              "cot_per_success": c / (s / n) ** ROBUSTNESS_WEIGHT if s else "",
+                              "success_rate": s / n, "cot_mean": "" if c is None else c,
+                              "cot_trials": sum(len(cot[(p, w, d)]) for p in keep),
+                              "cot_per_success": c / (s / n) ** ROBUSTNESS_WEIGHT if s and c is not None else "",
                               "optimal": int(d == chosen),
                               "optimal_df": "" if chosen is None else chosen,
                               "optimal_df_ci_low": "" if low is None else low,
@@ -357,7 +370,7 @@ def figure_optimal_duty(results, tag, out):
     if not table:
         raise FileNotFoundError("no robustness data")
     tested = sorted({t["command_df"] for t in table})
-    ceiling = tested[-1] + .05      # widths where no duty factor succeeds sit above the highest duty factor
+    ceiling = tested[-1] + .07      # widths where no duty factor succeeds sit above the highest duty factor
     fig, ax = plt.subplots(figsize=(4.8, 3.6))
     for j, (gait, points) in enumerate(curves.items()):
         shift = (j - (len(curves) - 1) / 2) * .008
@@ -371,11 +384,17 @@ def figure_optimal_duty(results, tag, out):
     ax.plot([], [], ls="none", marker="x", ms=6, mew=1.6, color=MUTED, label="no duty factor succeeds")
     widths = sorted({t["step_width"] for t in table})
     ax.set_xticks(widths, [f"{w:.2f}" for w in widths])
-    ax.set_yticks(tested + [ceiling], [f"{d:g}" for d in tested] + ["none"])
+    ax.set_yticks(tested, [f"{d:g}" for d in tested])
+    # "none" is a category, not a duty factor: no gridline, and the axis line stops below it
+    ax.set_yticks([ceiling], ["none"], minor=True)
+    ax.tick_params(axis="y", which="minor", colors=MUTED, labelsize=8, length=0)
     ax.set_ylim(tested[0] - .03, ceiling + .03)
+    ax.spines["left"].set_bounds(tested[0] - .03, tested[-1] + .02)
     ax.set_xlabel("Stance width (m)", color=TEXT, fontsize=9)
     ax.set_ylabel("Duty factor minimizing CoT / success rate", color=TEXT, fontsize=9)
-    ax.legend(frameon=False, fontsize=8, labelcolor=TEXT, loc="upper right")
+    legend = ax.legend(frameon=True, facecolor="#ffffff", edgecolor="none", framealpha=1, fontsize=8,
+                       labelcolor=TEXT, loc="upper right")
+    legend.set_zorder(5)
     style(ax)
     save(fig, out, "fig5_optimal_duty_factor_vs_stance_width", table)
 

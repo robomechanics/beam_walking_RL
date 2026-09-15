@@ -32,9 +32,9 @@ swing ticks. Commands change only at gait-cycle boundaries.
 | # | Stage | Script | Key settings |
 |---|---|---|---|
 | 1 | Training | `scripts/narrow_specialist_experiment.py train --gait G` | 3,072 envs, 1,800 PPO updates, seed 5, 10% grounded starts |
-| 2 | Command fidelity | `scripts/evaluate_policy.py --task narrow_specialist` | every period of the gait, all widths and evaluated duty factors, 64 held-out trials, 0.30 m/s |
+| 2 | Command fidelity | `scripts/evaluate_policy.py --task narrow_specialist` | trot 0.36/0.48/0.54 s, walk 0.40/0.48/0.54 s, all widths and evaluated duty factors, 64 held-out trials, 0.30 m/s |
 | 3 | Duty-contrast check | `scripts/narrow_fidelity_gate.py --criterion contrast` | recorded for every fidelity run |
-| 4 | Robustness | `scripts/evaluate_policy.py --task narrow_specialist --perturbation` | every period of the gait, all widths and evaluated duty factors, 64 held-out trials under random base disturbances up to 25 N, 0.30 m/s |
+| 4 | Robustness | `scripts/evaluate_policy.py --task narrow_specialist --perturbation` | trot 0.36/0.48/0.54 s, walk 0.40/0.48/0.54 s, all widths and evaluated duty factors, 64 held-out trials under random base disturbances up to 25 N, 0.30 m/s |
 | 4b | Robustness, stronger disturbance | same, `--perturbation_max_force 50 --perturbation_max_torque 6` | for a gait whose 0.20–0.30 m cells all reach 95% success at 25 N, stage 4 repeated with disturbances up to 50 N |
 | 5 | Period sweep | `scripts/collect_policy_surfaces.py --task narrow_specialist --period-sweep` | trot 0.36/0.40/0.48/0.54 s, walk 0.40/0.48/0.54 s, 4 speeds, 6 widths, feasible evaluated duty factors, 32 matched trials |
 | 6 | Selector | `scripts/fit_unified_duty_selector.py`, then `collect_policy_surfaces.py --selector-checkpoint`, then `scripts/validate_unified_selector.py` | fit on both sweeps, fresh-seed validation per gait, promotion |
@@ -56,22 +56,28 @@ with its own seeds, so this changes only wall-clock time.
 | 5 | Optimal duty factor against stance width, trot and walk: the duty factor with the lowest CoT divided by success rate under disturbance, with 95% bootstrap intervals |
 
 Every figure pools the periods at which every duty factor of the gait was run.
-CoT uses every trial that completed without a failure.
+CoT uses every trial that completed without a failure and with a finite positive
+value.
 
 ### Optimal duty factor
 
 Figure 5 weighs efficiency against robustness. For each gait and stance width,
 each duty factor is scored by its undisturbed CoT (period sweep at 0.30 m/s,
 the robustness speed) divided by its success rate under disturbance (stage 4),
-and the lowest score is optimal. The score is the expected energy per
-successfully completed traversal, so a failed traversal costs one traversal's
-energy. A width where no duty factor succeeds has no optimum. The interval
-resamples trials within every period and duty factor, 1,000 times.
+both pooled over the same periods, and the lowest score is optimal. The score is
+the expected energy per successfully completed traversal, so a failed traversal
+costs one traversal's energy. CoT is therefore a mean: the mean of each
+period's trials, averaged over periods with equal weight. A duty factor is a
+candidate only if it succeeds at least once and has completed undisturbed
+trials at every pooled period; a width without candidates has no optimum. The
+interval is the 2.5th–97.5th percentile of the optimum over 1,000 resamples of
+the trials within every period and duty factor.
 
-Dividing by success rate, instead of subtracting a weighted success term, keeps
-low but non-zero success rates informative. A subtracted term is dominated by
-energy wherever success is low, and would choose a duty factor that never
-succeeds.
+Dividing by success rate sets the weight between energy and success by what the
+score means, one traversal's energy per failure, instead of by a tuned
+parameter. A subtracted term, success minus a weighted CoT increase, needs a
+tuned weight, and a single weight cannot suit both near-zero success at narrow
+stance and near-full success at wide stance.
 
 ### Training details
 

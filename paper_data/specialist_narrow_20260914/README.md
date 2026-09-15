@@ -33,15 +33,22 @@ at evaluation, where they measure robustness.
 **Caveats**
 
 - One training seed per gait.
-- Figure 5 at 0.10 m rests on few successes (trot at most 10 of 128 trials per
-  duty factor, walk at most 19 of 192), so its intervals are wide there: trot
-  0.60–0.75 at 0.10 m and 0.55–0.75 at 0.15 m. At 0.05 m no duty factor
-  succeeds under this disturbance, so there is no optimum.
+- Figure 5's intervals are wide where successes are few or scores nearly tie. At
+  0.10 m successes are few (trot at most 10 of 128 trials per duty factor, walk
+  at most 19 of 192), giving trot 0.60–0.75 and walk 0.80–0.90. At 0.15 m trot
+  duty factors 0.55–0.75 score within 7% of each other, so the trot optimum
+  there (0.75, interval 0.55–0.75) is not settled; only 0.50 is clearly worse.
+  At 0.05 m no duty factor succeeds under this disturbance, so there is no
+  optimum.
 - Figure 5 depends on how success is weighted against energy. Weighting success
   half or twice as strongly (success rate raised to 0.5 or 2) keeps the optimum
-  at 0.10 m above the optimum at 0.30 m for both gaits. Energy alone always picks
-  the lowest duty factor, and success thresholds from 50% to 90% give no duty
-  factor at 0.10 m.
+  at 0.10 m above the optimum at 0.30 m for both gaits. Ignoring success, the
+  lowest duty factor is the cheapest at every width, and success thresholds from
+  50% to 90% give no duty factor at 0.10 m. A subtracted score, success minus
+  λ times the CoT increase relative to the cheapest duty factor at that width,
+  has no weight that suits every width: above
+  λ = 0.10 trot at 0.10 m picks 0.50, which never succeeds, and below λ = 0.49
+  trot at 0.30 m picks 0.55 on a one-trial success difference.
 - Walk has selector contexts at 36 of 72 combinations. At some periods swing-tick
   rounding moves walk's executed schedule more than 0.05 from the commanded
   duty factor, which the compliance check rejects.
@@ -80,4 +87,4 @@ from those tables.
 | 2. Cost of transport against realized duty factor | Duty factor affects energetic cost | Cost of transport (positive mechanical) rises with duty factor for both gaits at every width: trot 0.16 to 0.28 and walk 0.31 to 0.38 at 0.05 m. A higher duty factor costs energy, so it is worth raising where stance is constrained. |
 | 3. Robustness (success rate) against stance width | Higher duty factor gives more robust locomotion on narrow terrain (Investigation 3) | At 0.15 m, trot success rises from 23% at duty 0.50 to 74% at 0.75, and walk from 51% at 0.75 to 77% at 0.85. At 0.20 m, trot rises from 88% to 98% and walk from 88% to 99%. Every duty factor fails at 0.05 m and succeeds at 0.25–0.30 m, so duty factor matters where stance is constrained. |
 | 4. Realized duty factor by width | The learned controller executes the commanded duty factor (Investigation 2, command fidelity) | Trot realizes 0.52–0.76 for commands 0.50–0.75 and walk 0.76–0.87 for 0.75–0.90, the same at every stance width. |
-| 5. Optimal duty factor against stance width | As stance width decreases, higher duty factors give optimal performance: duty factor is the parameter to raise when stance is constrained, and not when it is not | Each duty factor is scored by CoT divided by success rate under disturbance, the expected energy per successful traversal. At 0.20–0.30 m the cheapest duty factors are optimal (trot 0.50, walk 0.75). At 0.15 m the optimum is trot 0.75 and walk 0.80, and at 0.10 m trot 0.75 and walk 0.85. At 0.10 m trot 0.50 never succeeds (0 of 128). At 0.05 m no duty factor succeeds under this disturbance. |
+| 5. Optimal duty factor against stance width | As stance width decreases, higher duty factors give optimal performance: duty factor is the parameter to raise when stance is constrained, and not when it is not | Each duty factor is scored by mean undisturbed CoT divided by success rate under disturbance, the expected energy per successful traversal. Trot: 0.50 at 0.20–0.30 m and 0.75 at 0.10–0.15 m. Walk: 0.75 at 0.25–0.30 m, 0.80 at 0.15–0.20 m and 0.85 at 0.10 m. At 0.10 m trot 0.50 never succeeds (0 of 128). At 0.05 m no duty factor succeeds under this disturbance. |
