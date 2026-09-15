@@ -22,7 +22,9 @@ from .narrow_specialist import (
 PUSH_SCHEMA = "narrow_specialist_push_finetune_v1"
 PUSH_TRAINING_KIND = "narrow_specialist_push_finetune"
 PUSH_TRAINING_NUM_ENVS = SPECIALIST_TRAINING_NUM_ENVS
-PUSH_TRAINING_ITERATIONS = SPECIALIST_TRAINING_ITERATIONS
+# 1,200 updates: an earlier push fine-tune reached about 94% of its 1,800-update
+# reward by update 1,200, and the shorter run saves time on both gaits.
+PUSH_TRAINING_ITERATIONS = 1200
 PUSH_TRAINING_SEED = 3   # Same seed the seed-2 push fine-tune used.
 PUSH_TASK_FILES = SPECIALIST_TASK_FILES
 PUSH_TRAINING_SOURCE_FILES = PUSH_TASK_FILES + (

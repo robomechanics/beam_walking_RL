@@ -33,7 +33,7 @@ swing ticks. Commands change only at gait-cycle boundaries.
 | # | Stage | Script | Key settings |
 |---|---|---|---|
 | 1 | Clean training | `scripts/narrow_specialist_experiment.py train --gait G` | 3,072 envs, 1,800 PPO updates, seed 5, 10% grounded starts |
-| 2 | Push fine-tune | `scripts/narrow_specialist_push_experiment.py train --gait G --perturbation --initialize_from <clean>` | warm start, 1,800 updates, seed 3 |
+| 2 | Push fine-tune | `scripts/narrow_specialist_push_experiment.py train --gait G --perturbation --initialize_from <clean>` | warm start, 1,200 updates, seed 3 |
 | 3 | Command fidelity | `scripts/evaluate_policy.py --task narrow_specialist` | every period of the gait, all widths and duty anchors, 64 held-out trials, 0.30 m/s |
 | 4 | Duty-contrast gate | `scripts/narrow_fidelity_gate.py --criterion contrast` | stops the pipeline if the duty contrast collapses |
 | 5 | Period sweep | `scripts/collect_policy_surfaces.py --task narrow_specialist --period-sweep` | trot 0.36/0.40/0.48/0.54 s, walk 0.40/0.48/0.54 s, 4 speeds, 6 widths, feasible duties, 32 matched trials |
@@ -41,8 +41,12 @@ swing ticks. Commands change only at gait-cycle boundaries.
 | 7 | Figures | `scripts/make_specialist_period_surfaces.py`, `scripts/make_specialist_trend_figures.py` | one panel or file per period |
 | 8 | Export | shell step | CSVs, provenance and figures into `paper_data/` |
 
-Stages run one simulator job at a time. Training waits for 14.8 GB of free
-host memory, because the capacity check rejects a start below 14.3 GB.
+Trainings run one at a time, and wait for 14.8 GB of free host memory because
+the capacity check rejects a start below 14.3 GB. Evaluations (stages 3, 5 and
+the selector validations) run trot and walk side by side. Each is an
+independent process with its own seeds, so this changes only wall-clock time.
+Each evaluation waits for 9 GB of free host memory and retries up to three
+times if its start is refused.
 
 ### Training details
 
@@ -83,6 +87,9 @@ only from the tag `pre-specialist-data`.
   0.58–0.67 and the duty contrast the paper depends on collapsed.
 - **Self-collision on.** At 0.05 m the feet are millimetres apart. Without
   collision the legs could pass through each other and flatter narrow stances.
+- **1,200 fine-tune updates.** An earlier push fine-tune reached about 94% of
+  its 1,800-update reward by update 1,200. The shorter run was chosen to save
+  time.
 - **Push-trained policies are the reported controller.** This follows the
   mentor's direction to avoid behaviour that only works in a noise-free
   simulator. The cost is measurable: a push-trained trot policy realized duty

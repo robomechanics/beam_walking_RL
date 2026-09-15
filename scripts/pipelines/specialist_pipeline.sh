@@ -55,18 +55,40 @@ for g in trot walk; do
     --output results/narrow_specialist_push_${g}_from_seed5_3072_${TAG} || exit 1
 done
 
+# Evaluations below run trot and walk side by side. Each is an independent
+# process with its own seeds, so running two at once changes timing only.
+# Before each start, wait for the host memory the evaluation check needs, and
+# retry a job whose start is refused.
+eval_mem() { local waited=0
+  while [ "$(awk '/MemAvailable/{print int($2/1024)}' /proc/meminfo)" -lt 9000 ]; do
+    sleep 20; waited=$((waited+20)); [ $waited -ge 900 ] && return 0; done; }
+attempt() { # completion-file stage-name command...
+  local marker=$1 name=$2; shift 2
+  local outdir; outdir=$(dirname "$marker")
+  for try in 1 2 3; do
+    [ -f "$marker" ] && return 0
+    rm -rf "$outdir"; mkdir -p "$(dirname "$outdir")"; eval_mem
+    run "$name" "$@" && [ -f "$marker" ] && return 0
+    sleep 60
+  done
+  return 1
+}
+
 # 3. Fidelity of the push-trained policies at every period.
 fid() { # gait period
   local g=$1 p=$2
   local out; out=$(printf "results/validation_narrow_%s_v030_p%.2f_%s" "$g" "$p" "$TAG")
-  [ -f "$out/evaluation_complete.json" ] && return 0
-  rm -rf "$out"
   local dfs=""; [ "$g" = trot ] && [ "$p" = ".36" ] && dfs="--dfs .50 .625"
-  run "fidelity_${g}_p${p}" $P scripts/evaluate_policy.py --task narrow_specialist --checkpoint "$(ck $g)" \
+  [ -f "$out/analysis_done" ] && return 0
+  attempt "$out/evaluation_complete.json" "fidelity_${g}_p${p}" \
+    $P scripts/evaluate_policy.py --task narrow_specialist --checkpoint "$(ck $g)" \
     --gait $g --period $p --step_widths $W $dfs --output "$out" --headless || return 1
-  run "analyze_${g}_p${p}" $P scripts/analyze_beam.py "$out"
+  run "analyze_${g}_p${p}" $P scripts/analyze_beam.py "$out" && touch "$out/analysis_done"
 }
-for g in trot walk; do for p in $(periods_of $g); do fid $g $p; done; done
+( for p in $(periods_of trot); do fid trot $p; done ) & A=$!
+sleep 45
+( for p in $(periods_of walk); do fid walk $p; done ) & B=$!
+wait $A $B
 
 # 4. Duty-contrast gate. Push training is expected to shift duty somewhat;
 #    the gate stops the pipeline only if the duty contrast itself collapses.
@@ -78,28 +100,36 @@ if ! run fidelity_gate $P scripts/narrow_fidelity_gate.py --criterion contrast -
   exit 3
 fi
 
-# 5. Period sweeps (they include 0.48 s with the other periods).
-for g in trot walk; do
-  out=results/narrow_surfaces_sweep_${g}_${TAG}/grid
-  [ -f "$out/SURFACE_COMPLETE" ] && continue
-  rm -rf "results/narrow_surfaces_sweep_${g}_${TAG}"; mkdir -p "$(dirname $out)"
-  run surface_sweep_$g $P scripts/collect_policy_surfaces.py --task narrow_specialist --checkpoint "$(ck $g)" \
+# 5. Period sweeps, trot and walk side by side.
+sweep() { local g=$1
+  local out=results/narrow_surfaces_sweep_${g}_${TAG}/grid
+  attempt "$out/SURFACE_COMPLETE" "surface_sweep_$g" \
+    $P scripts/collect_policy_surfaces.py --task narrow_specialist --checkpoint "$(ck $g)" \
     --gaits $g --period-sweep --output "$out" --headless
-done
+}
+sweep trot & A=$!
+sleep 45
+sweep walk & B=$!
+wait $A $B
 
-# 6. Selector.
+# 6. Selector: fit, then both validations side by side, then promotion.
 ST=results/narrow_surfaces_sweep_trot_${TAG}/grid
 SW=results/narrow_surfaces_sweep_walk_${TAG}/grid
 FIT=results/narrow_selector_${TAG}
 if [ -f $ST/SURFACE_COMPLETE ] && [ -f $SW/SURFACE_COMPLETE ]; then
-  rm -rf $FIT
-  if run selector_fit $P scripts/fit_unified_duty_selector.py $ST/surface_trials.csv $SW/surface_trials.csv --output $FIT; then
-    for g in trot walk; do
-      rm -rf results/narrow_selector_validation_${g}_${TAG}
-      run selector_validation_$g $P scripts/collect_policy_surfaces.py --task narrow_specialist --checkpoint "$(ck $g)" \
+  [ -f $FIT/unified_duty_selector.pt ] || { rm -rf $FIT; run selector_fit $P scripts/fit_unified_duty_selector.py \
+    $ST/surface_trials.csv $SW/surface_trials.csv --output $FIT; }
+  if [ -f $FIT/unified_duty_selector.pt ]; then
+    validate() { local g=$1
+      attempt "results/narrow_selector_validation_${g}_${TAG}/SURFACE_COMPLETE" "selector_validation_$g" \
+        $P scripts/collect_policy_surfaces.py --task narrow_specialist --checkpoint "$(ck $g)" \
         --gaits $g --selector-checkpoint $FIT/unified_duty_selector.pt \
         --output results/narrow_selector_validation_${g}_${TAG} --headless
-    done
+    }
+    validate trot & A=$!
+    sleep 45
+    validate walk & B=$!
+    wait $A $B
     run selector_promote $P scripts/validate_unified_selector.py --selector $FIT/unified_duty_selector.pt \
       --validation results/narrow_selector_validation_trot_${TAG} results/narrow_selector_validation_walk_${TAG} \
       --output results/narrow_selector_promoted_${TAG}

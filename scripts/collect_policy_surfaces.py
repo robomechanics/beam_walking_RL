@@ -377,9 +377,14 @@ def main():
         agent.seed, agent.device = args.seed, cfg.sim.device
         runner = OnPolicyRunner(wrapped, agent.to_dict(), log_dir=None, device=env.device)
         saved = runner.load(str(CHECKPOINT), load_optimizer=False)
+        # A fine-tune continues its parent's command-curriculum counter, so the
+        # expected final counter is the parent's plus this run's own steps.
+        _iterations = int(training.get("training_iterations_requested", 1800))
+        _expected_steps = (int(training.get("parent_common_step_counter") or 0)
+                           + _iterations * agent.num_steps_per_env)
         if (not saved or saved.get("task_sha256") != task_hash
-                or saved.get("common_step_counter") != 86400
-                or runner.current_learning_iteration != 1799):
+                or saved.get("common_step_counter") != _expected_steps
+                or runner.current_learning_iteration != _iterations - 1):
             raise ValueError("Loaded policy identity/iteration mismatch")
         if TASK_VARIANT in ("unified", "specialist", "narrow_specialist"):
             _data.verify_training(training, saved)
