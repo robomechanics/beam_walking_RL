@@ -1,9 +1,0 @@
-{
-  "ready": true,
-  "cells": 20,
-  "passed_cells": 20,
-  "scientific_role": "command_fidelity_prerequisite",
-  "not_closed_loop_chi_evidence": true,
-  "checkpoint_sha256": "ef5dae663b9650a3197e589b406101d4a450282e1e358c2af895d0505912127a",
-  "evaluator_sha256": "7ee7bb5842127039e13f45d1c3aa11a4612ea7357371ae754a1fc15c7c9896b7"
-}

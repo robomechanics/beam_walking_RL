@@ -1,5 +1,0 @@
-gait,command_df,references,passed,periodic_rate,label
-trot,0.5,160,98,0.6125,"Trot, DF 0.5"
-trot,0.625,160,160,1.0,"Trot, DF 0.625"
-trot,0.75,160,160,1.0,"Trot, DF 0.75"
-walk,0.75,160,160,1.0,"Walk, DF 0.75"

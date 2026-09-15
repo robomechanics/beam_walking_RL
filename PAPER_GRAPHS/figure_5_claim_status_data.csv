@@ -1,9 +1,0 @@
-claim,status,evidence
-"Policy executes width, DF and gait
-while walking straight",Supported,"20/20 cells; 1,280/1,280 rollouts"
-Higher DF improves convergence,Diagnostic only,Periodicity: 61.25% at trot DF 0.50; 100% otherwise
-Narrower stance worsens convergence,Missing,No valid χ-by-width comparison
-Speed has weak convergence effect,Missing,"0.25–0.40 m/s ran; χ invalid, so no usable comparison"
-Matched walk and trot converge similarly,Missing,No valid χ-by-gait comparison
-DF and speed affect efficiency; gait is weak,Suppressed,65/80 valid CoT cells; missingness depends on factors
-Width has little efficiency effect,Suppressed,Incomplete matched CoT pairs

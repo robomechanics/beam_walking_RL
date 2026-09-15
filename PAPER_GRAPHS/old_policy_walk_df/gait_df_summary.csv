@@ -1,7 +1,0 @@
-gait,command_df,trials,compliant_trials,periodic_trials,valid_energy_trials,physical_failures,mean_achieved_df
-trot,0.5,640,591,356,356,0,0.50013427734375
-trot,0.625,640,640,640,640,0,0.625
-trot,0.75,640,640,640,640,0,0.75
-walk,0.5,640,0,161,0,1,0.6623291015625
-walk,0.625,640,0,457,0,0,0.696826171875
-walk,0.75,640,640,640,640,0,0.75

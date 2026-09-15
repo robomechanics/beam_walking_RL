@@ -1,5 +1,0 @@
-# Original-policy walking duty-factor extension
-
-These are new exploratory measurements of the exact seed-2 checkpoint used by the old figures. Walk DF 0.50 and 0.625 were not in its training distribution. No adaptive policy is used.
-
-The upper panel is positive mechanical CoT; the lower panel is phase-one periodicity, a diagnostic of realized motion rather than a convergence estimate. Periodicity does not establish execution of the requested gait or duty factor; see the companion walking_df_command_fidelity figure. χ remains unmeasured here. Each of 120 cells has 32 matched resets, 12 total cycles, and measurement over the last four. Physical failures at any time invalidate trial endpoints. Energy cells need at least 90% valid trials, including command, contact-topology, and periodicity gates. CoT summaries take the median of four cycles, then the median of valid trials. The aggregate takes the median of all five width summaries and requires all five widths valid; missing cells are not interpolated. The companion figure separates widths. All trial denominators are retained.

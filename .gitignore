@@ -126,3 +126,8 @@ events.out.tfevents.*
 !/paper_data/
 !/paper_data/**
 !/paper_data/**/*.pt
+
+# Generated figures and shareable archives stay local.
+PAPER_GRAPHS/
+paper_data/*.tar.gz
+paper_data/*.zip
