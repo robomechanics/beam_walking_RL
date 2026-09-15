@@ -13,7 +13,8 @@
 # Documented in PIPELINE.md at the repo root. Resumable: completed stages are
 # skipped. Run from anywhere:
 #   setsid nohup bash scripts/pipelines/specialist_pipeline.sh > results/pipeline.log 2>&1 &
-cd "$(dirname "$0")/../.."
+# Set REPO_ROOT when running a copy of this script from another directory.
+cd "${REPO_ROOT:-$(dirname "$0")/../..}" || exit 1
 PYTHON_BIN=${PYTHON_BIN:-$HOME/anaconda3/envs/isaaclab/bin/python}
 P="env -u PYTHONPATH -u AMENT_PREFIX_PATH $PYTHON_BIN"
 TAG=${TAG:-narrow_20260914}
@@ -60,7 +61,8 @@ done
 # 2. Push fine-tunes: two consecutive 1,200-update segments per gait (2,400
 #    updates). Narrow stance under pushes learns slowly: after one segment a
 #    third of trot episodes still ended in a fall and reward was still rising.
-for g in trot walk; do
+#    The second segment continues the first's weights, Adam state and learning rate.
+for g in walk trot; do
   if [ ! -f "$(seg1 $g)/$FINAL" ]; then
     fresh results/narrow_specialist_push_${g}_smoke_${TAG} "$(seg1 $g)"
     run push_smoke_$g $P scripts/narrow_specialist_push_experiment.py smoke --gait $g --perturbation \

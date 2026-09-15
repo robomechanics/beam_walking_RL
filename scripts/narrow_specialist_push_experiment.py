@@ -285,6 +285,13 @@ def main():
             if not torch.equal(value.detach().cpu(), state["model_state_dict"][key]):
                 raise RuntimeError(f"Parent initialization weight mismatch: {key}")
         parent["initial_weights_match_parent"] = True
+        # Continue the parent's optimizer as well. A fresh Adam's first step moves
+        # every weight by about the full learning rate whatever the gradient, and
+        # that single update collapsed a narrow-stance walk policy.
+        runner.alg.optimizer.load_state_dict(state["optimizer_state_dict"])
+        runner.alg.learning_rate = float(runner.alg.optimizer.param_groups[0]["lr"])
+        parent["optimizer_state_from_parent"] = True
+        parent["initial_learning_rate"] = runner.alg.learning_rate
         lineage = push_lineage_id(
             training_source_sha256, args.seed, parent["parent_checkpoint_sha256"], args.gait)
         # Continue the parent's fully developed command distribution.

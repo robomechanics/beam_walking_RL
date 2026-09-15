@@ -72,27 +72,17 @@ Both gaits together take about 2 h 25 min of training.
   continuously over speed, width, period and duty, capped by the swing bound.
 - **Plant.** Stock Go2 PD gains (Kp 25, Kd 0.5), 50 Hz control, 200 Hz
   physics, **self-collision on**, no domain randomization.
-- **Placement reward.** 3 cm lateral tolerance. Width observations keep the
-  0.10–0.50 m normalization used by every earlier policy.
+- **Placement reward.** 3 cm lateral tolerance. Width observations are
+  normalized over 0.10–0.50 m.
 - **Pushes during fine-tuning.** Random world-frame base force up to 25 N and
   torque up to 3 N m, held 0.10–0.40 s at a time, ramping from 10% to 100% of
   that bound over the first 10 s of each episode.
-- **Segmented fine-tune.** Each push segment is a new process warm-started from
-  the previous checkpoint, not a resumed run:
-  - Only the policy and critic weights carry over, including the action noise.
-    The Adam state and the adaptive learning rate reset, so each segment starts
-    again at 1e-3. Two 1,200-update segments are not equivalent to one
-    2,400-update run, and a brief reward dip after the boundary is expected.
-  - `common_step_counter` carries over and accumulates, so the curriculum does
-    not restart. Segment 1 starts at 86,400 steps and segment 2 at 144,000, both
-    past the anchor-only phases, on the full command distribution.
-  - Both segments use seed 3, so segment 2 restarts the random streams for
-    pushes, commands and resets that segment 1 began with. Trajectories still
-    differ because the policy differs.
-  - Update numbering restarts in each output directory. Segment 2's
-    `model_1199.pt` is update 4,199 of the policy overall. TensorBoard curves
-    and watcher reports count from 0 in each segment, so plot segments end to
-    end when comparing.
+- **Fine-tune segments.** Segment 1 starts from the clean policy's weights with
+  a new Adam optimizer. Segment 2 continues segment 1's weights, Adam state and
+  adaptive learning rate. The curriculum step counter carries through both, so
+  fine-tuning stays on the full command distribution. Both segments use seed 3.
+  Update numbers restart in each segment's directory: segment 2's
+  `model_1199.pt` is update 4,199 of the policy.
 
 ### Selector
 
@@ -104,9 +94,7 @@ are feasible at that period. A selector is promoted only if, on fresh seeds,
 every context reaches at least 90% compliance and 90% finite-energy compliance,
 with median realized duty within 0.05 of the selection.
 
-The selector's width domain is read from the sweep, so it accepts 0.05 m. As a
-side effect, selector checkpoints fitted before this change (0.10–0.50 m) load
-only from the tag `pre-specialist-data`.
+The selector's width domain is read from the sweep, so it covers 0.05–0.30 m.
 
 ## Design decisions
 
@@ -116,12 +104,9 @@ only from the tag `pre-specialist-data`.
   0.58–0.67 and the duty contrast the paper depends on collapsed.
 - **Self-collision on.** At 0.05 m the feet are millimetres apart. Without
   collision the legs could pass through each other and flatter narrow stances.
-- **2,400 fine-tune updates, 4,200 in total per policy.** The fine-tune runs as
-  two 1,200-update segments on top of 1,800 clean updates. After one segment
-  trot reward was 229 against 443 for the clean policy, and 34% of training
-  episodes still ended in a fall; walk had 16% falling. The second segment
-  continues from the first and records its segment number and root clean
-  checkpoint. Final checkpoints are `model_1199.pt`.
+- **2,400 fine-tune updates.** Narrow stance under pushes learns slowly. After
+  1,200 updates trot reward was still rising and a third of training episodes
+  still ended in a fall, so the fine-tune runs for two 1,200-update segments.
 - **Push-trained policies are the reported controller.** This follows the
   mentor's direction to avoid behaviour that only works in a noise-free
   simulator. The cost is measurable: a push-trained trot policy realized duty
@@ -206,32 +191,15 @@ setsid nohup bash scripts/pipelines/specialist_pipeline.sh > results/pipeline.lo
 tail -f results/narrow_20260914.status
 ```
 
-Set `TAG` to start a separate run, and `PYTHON_BIN` if the Isaac Lab Python is
-elsewhere. The script is resumable: a stage whose output already has a
-completion marker is skipped, so rerunning after an interruption continues
-where it stopped.
+Set `TAG` to start a separate run, `PYTHON_BIN` if the Isaac Lab Python is
+elsewhere, and `REPO_ROOT` when running a copy of the script from another
+directory. The script is resumable: completed stages are skipped, and a
+training stage without its final checkpoint is retrained from the start.
 
-While a run is in progress:
-
-- **Resuming restarts an unfinished training stage from update 0.** A trainer
-  that stops before its final checkpoint has its directory emptied and is
-  retrained. Warm starts accept only a final checkpoint, so intermediate
-  checkpoints cannot be continued.
-- **Do not edit the training source until the evaluations finish.** Fidelity,
-  sweeps and selector validation accept a push-trained checkpoint only if the
-  files listed in `PUSH_TRAINING_SOURCE_FILES` (`narrow_specialist_push.py`)
-  still hash to the value recorded at training time. The list includes
-  `scripts/watch_training.py` and the training launcher.
-- **Do not edit the running copy of the pipeline script.** Bash reads a script
-  as it executes, so an in-place edit can corrupt the stages still to come.
-  Stop the script, edit, and relaunch.
-- **Stop a trainer with its watcher.** A trainer killed by a signal skips its
-  own cleanup, leaving the watcher alive. Before emptying a directory, the
-  script stops any watcher still attached to it, so its final report cannot
-  block the retry.
-- **Status gaps after a relaunch are expected.** If the pipeline script is
-  stopped while a trainer keeps running, that stage never writes its `ok` line.
-  The relaunched script finds the final checkpoint and skips the stage.
+Evaluation accepts a push-trained checkpoint only if the training source files
+(`PUSH_TRAINING_SOURCE_FILES` in `narrow_specialist_push.py`) still match the
+hash recorded at training time, so leave them unchanged while a run is in
+progress.
 
 ## Code map
 

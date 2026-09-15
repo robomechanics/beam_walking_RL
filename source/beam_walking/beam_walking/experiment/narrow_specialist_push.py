@@ -104,6 +104,7 @@ def push_lineage_valid(training, saved, root):
         and training.get("fresh_training") is False
         and training.get("warm_start") is True
         and training.get("initial_weights_match_parent") is True
+        and training.get("optimizer_state_from_parent") is True
         and training.get("external_pushes") is True
         and training.get("training_source_sha256") == source
         and training.get("training_lineage_id") == expected
