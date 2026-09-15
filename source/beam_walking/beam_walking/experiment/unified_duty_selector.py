@@ -40,6 +40,17 @@ REQUIRED_TRIAL_FIELDS = ("seed",) + CONTEXT_FIELDS + (
     "command_df", "compliant", "positive_mechanical_cot",
 )
 PERIOD_RANGE = (min(PERIOD_TICKS) * CONTROL_DT, max(PERIOD_TICKS) * CONTROL_DT)
+# Stance-width domain of the selector. Defaults to the standard 0.10-0.50 m;
+# narrow-stance grids set it from their manifest, and checkpoints restore it.
+WIDTH_RANGE = tuple(STEP_WIDTH_RANGE)
+
+
+def set_width_range(width_range):
+    global WIDTH_RANGE
+    low, high = (float(value) for value in width_range)
+    if not 0 < low < high:
+        raise ValueError(f"Invalid selector width range: {width_range}")
+    WIDTH_RANGE = (low, high)
 GAIT_LEVELS = {"trot": tuple(TROT_DUTY_LEVELS), "walk": tuple(WALK_DUTY_LEVELS)}
 # Class index space: every (gait, duty) pair the unified policy was trained on.
 LEVELS = tuple((gait, duty) for gait in GAITS for duty in GAIT_LEVELS[gait])
@@ -79,8 +90,8 @@ def validate_context_values(step_width, speed, period, gait):
     values = np.asarray([step_width, speed, period], dtype=float)
     if not np.isfinite(values).all():
         raise ValueError("Selector context must be finite")
-    if not STEP_WIDTH_RANGE[0] - 1e-6 <= values[0] <= STEP_WIDTH_RANGE[1] + 1e-6:
-        raise ValueError("Step width is outside [0.10, 0.50] m")
+    if not WIDTH_RANGE[0] - 1e-6 <= values[0] <= WIDTH_RANGE[1] + 1e-6:
+        raise ValueError(f"Step width is outside [{WIDTH_RANGE[0]:.2f}, {WIDTH_RANGE[1]:.2f}] m")
     if not SPEED_RANGE[0] - 1e-6 <= values[1] <= SPEED_RANGE[1] + 1e-6:
         raise ValueError("Speed is outside [0.25, 0.40] m/s")
     if gait not in GAITS:
@@ -234,8 +245,8 @@ class UnifiedDutySelector(torch.nn.Module):
                 raise ValueError("Gait id must be 0 (trot) or 1 (walk)")
             validate_context_values(float(row[0]), float(row[1]), float(row[2]),
                                     GAITS[gait_id])
-        width = 2 * (context[:, 0:1] - STEP_WIDTH_RANGE[0]) / (
-            STEP_WIDTH_RANGE[1] - STEP_WIDTH_RANGE[0]) - 1
+        width = 2 * (context[:, 0:1] - WIDTH_RANGE[0]) / (
+            WIDTH_RANGE[1] - WIDTH_RANGE[0]) - 1
         speed = 2 * (context[:, 1:2] - SPEED_RANGE[0]) / (
             SPEED_RANGE[1] - SPEED_RANGE[0]) - 1
         period = 2 * (context[:, 2:3] - PERIOD_RANGE[0]) / (
@@ -347,7 +358,7 @@ def selector_payload(model, targets, rejected, manifest, hashes, *, root,
         "state_dict": model.state_dict(), "hidden_dims": [32, 32],
         "input_fields": ["step_width", "speed", "period", "gait_id"],
         "input_ranges": {
-            "step_width": list(STEP_WIDTH_RANGE), "speed": list(SPEED_RANGE),
+            "step_width": list(WIDTH_RANGE), "speed": list(SPEED_RANGE),
             "period": list(PERIOD_RANGE), "gait_id": [0, len(GAITS) - 1]},
         "gait_levels": {gait: list(levels) for gait, levels in GAIT_LEVELS.items()},
         "gait_min_period_ticks": list(GAIT_MIN_PERIOD_TICKS),
@@ -408,6 +419,7 @@ def load_selector(path, device="cpu"):
     }
     if required - set(payload):
         raise ValueError(f"Selector checkpoint lacks provenance: {sorted(required - set(payload))}")
+    set_width_range(payload["input_ranges"]["step_width"])
     if payload["input_fields"] != ["step_width", "speed", "period", "gait_id"]:
         raise ValueError("Selector input fields differ from this implementation")
     if payload["gait_levels"] != {g: list(l) for g, l in GAIT_LEVELS.items()}:

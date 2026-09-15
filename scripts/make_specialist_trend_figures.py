@@ -96,9 +96,6 @@ def trend(cell_table, x, fixed, out, stem, xlabel, title):
                                           else "Stance width"))
     fig.suptitle(f"{title}   (period {fixed['period']:.2f} s, "
                  f"speed {fixed['speed']:.2f} m/s)", fontsize=14)
-    fig.text(.5, .005, "Filled markers: every completed trial with finite energy. "
-             "Open rings: condition also passed the compliance gates.",
-             ha="center", fontsize=9)
     fig.tight_layout(rect=(0, .03, 1, .96))
     for suffix in ("png", "pdf"):
         fig.savefig(out / f"{stem}.{suffix}", dpi=200)

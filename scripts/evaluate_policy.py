@@ -48,7 +48,7 @@ parser.add_argument(
     "--require_deployment_checkpoint", action="store_true",
     help="Reject checkpoints not trained with the frozen deployment DR profile")
 parser.add_argument(
-    "--task", choices=("paper", "unified", "specialist"), default="paper",
+    "--task", choices=("paper", "unified", "specialist", "narrow_specialist"), default="paper",
     help="Task variant the checkpoint was trained on: the paper sampler "
          "(walk DF .75 only) or the unified trot/walk sampler "
          "(walk DF .75-.90, docs/unified_gait_plan.md)")
@@ -573,6 +573,16 @@ def main():
                 f"Checkpoint is a {_training.get('specialist_gait')} specialist; "
                 f"--gait {args.gait} does not match")
         cfg = SpecialistEnvCfg(specialist_gait=args.gait)
+    elif args.task == "narrow_specialist":
+        from beam_walking.experiment.narrow_specialist_task import (
+            NarrowSpecialistEnv as UnifiedEnv, NarrowSpecialistEnvCfg)
+        _training = _json.loads(
+            (args.checkpoint.resolve().parent / "provenance.json").read_text())
+        if _training.get("specialist_gait") != args.gait:
+            raise ValueError(
+                f"Checkpoint is a {_training.get('specialist_gait')} specialist; "
+                f"--gait {args.gait} does not match")
+        cfg = NarrowSpecialistEnvCfg(specialist_gait=args.gait)
     else:
         cfg = (BeamEnvCfg() if args.deployment_profile == "nominal"
                else DeploymentBeamEnvCfg())
@@ -589,7 +599,7 @@ def main():
     cfg.recorders = EvaluationRecorderManagerCfg()
     env_class = (BeamEnv if args.deployment_profile == "nominal"
                  else DeploymentBeamEnv)
-    if args.task in ("unified", "specialist"):
+    if args.task in ("unified", "specialist", "narrow_specialist"):
         env_class = UnifiedEnv
     if perturbation_cfg is not None:
         from beam_walking.experiment.perturbation_env import perturbed_env_class
@@ -615,6 +625,9 @@ def main():
         elif args.task == "specialist":
             from beam_walking.experiment.unified_specialist import SPECIALIST_TASK_FILES
             task_hash = source_hash([ROOT / p for p in SPECIALIST_TASK_FILES])
+        elif args.task == "narrow_specialist":
+            from beam_walking.experiment.narrow_specialist import NARROW_TASK_FILES
+            task_hash = source_hash([ROOT / p for p in NARROW_TASK_FILES])
         else:
             task_hash = source_hash([
                 ROOT / "source/beam_walking/beam_walking/experiment/task.py",
@@ -658,6 +671,9 @@ def main():
         specialist_push_verified = False
         if args.task == "specialist":
             from beam_walking.experiment.unified_specialist_push import push_lineage_valid
+            specialist_push_verified = push_lineage_valid(training, saved, ROOT)
+        elif args.task == "narrow_specialist":
+            from beam_walking.experiment.narrow_specialist_push import push_lineage_valid
             specialist_push_verified = push_lineage_valid(training, saved, ROOT)
         if (
             training.get("task_sha256") != task_hash

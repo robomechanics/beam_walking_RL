@@ -1,0 +1,2423 @@
+{
+ "base_nominal | p0.36 | v0.30 | w0.10 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.36 | v0.30 | w0.10 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.36 | v0.30 | w0.20 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.36 | v0.30 | w0.20 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.36 | v0.30 | w0.30 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.36 | v0.30 | w0.30 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.36 | v0.30 | w0.40 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.36 | v0.30 | w0.40 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.36 | v0.30 | w0.50 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.36 | v0.30 | w0.50 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.25 | w0.10 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.25 | w0.10 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.25 | w0.10 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.25 | w0.20 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.25 | w0.20 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.25 | w0.20 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.25 | w0.30 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.25 | w0.30 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.25 | w0.30 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.25 | w0.40 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.25 | w0.40 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.25 | w0.40 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.25 | w0.50 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.25 | w0.50 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.25 | w0.50 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.30 | w0.10 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.30 | w0.10 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.30 | w0.10 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.30 | w0.20 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.30 | w0.20 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.30 | w0.20 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.30 | w0.30 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.30 | w0.30 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.30 | w0.30 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.30 | w0.40 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.30 | w0.40 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.30 | w0.40 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.30 | w0.50 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.30 | w0.50 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.30 | w0.50 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.35 | w0.10 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.35 | w0.10 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.35 | w0.10 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.35 | w0.20 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.35 | w0.20 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.35 | w0.20 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.35 | w0.30 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.35 | w0.30 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.35 | w0.30 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.35 | w0.40 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.35 | w0.40 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.35 | w0.40 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.35 | w0.50 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.35 | w0.50 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.35 | w0.50 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.40 | w0.10 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.40 | w0.10 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.40 | w0.10 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.40 | w0.20 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.40 | w0.20 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.40 | w0.20 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.40 | w0.30 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.40 | w0.30 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.40 | w0.30 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.40 | w0.40 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.40 | w0.40 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.40 | w0.40 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.40 | w0.50 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.40 | w0.50 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.48 | v0.40 | w0.50 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.54 | v0.30 | w0.10 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.54 | v0.30 | w0.10 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.54 | v0.30 | w0.10 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.54 | v0.30 | w0.20 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.54 | v0.30 | w0.20 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.54 | v0.30 | w0.20 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.54 | v0.30 | w0.30 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.54 | v0.30 | w0.30 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.54 | v0.30 | w0.30 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.54 | v0.30 | w0.40 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.54 | v0.30 | w0.40 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.54 | v0.30 | w0.40 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.54 | v0.30 | w0.50 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.54 | v0.30 | w0.50 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_nominal | p0.54 | v0.30 | w0.50 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.36 | v0.30 | w0.10 | d0.500": {
+  "trials": 64,
+  "success": 11,
+  "failure": 53,
+  "timeout": 0,
+  "mean_time_at_failure_s": 10.163396226415093,
+  "mean_envelope_at_failure": 0.9364226460456848
+ },
+ "base_perturbed | p0.36 | v0.30 | w0.10 | d0.625": {
+  "trials": 64,
+  "success": 25,
+  "failure": 39,
+  "timeout": 0,
+  "mean_time_at_failure_s": 10.58,
+  "mean_envelope_at_failure": 0.9529691934585571
+ },
+ "base_perturbed | p0.36 | v0.30 | w0.20 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.36 | v0.30 | w0.20 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.36 | v0.30 | w0.30 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.36 | v0.30 | w0.30 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.36 | v0.30 | w0.40 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.36 | v0.30 | w0.40 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.36 | v0.30 | w0.50 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.36 | v0.30 | w0.50 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.48 | v0.25 | w0.10 | d0.500": {
+  "trials": 64,
+  "success": 1,
+  "failure": 63,
+  "timeout": 0,
+  "mean_time_at_failure_s": 8.423174603174605,
+  "mean_envelope_at_failure": 0.8353428840637207
+ },
+ "base_perturbed | p0.48 | v0.25 | w0.10 | d0.625": {
+  "trials": 64,
+  "success": 1,
+  "failure": 63,
+  "timeout": 0,
+  "mean_time_at_failure_s": 9.62825396825397,
+  "mean_envelope_at_failure": 0.9028856754302979
+ },
+ "base_perturbed | p0.48 | v0.25 | w0.10 | d0.750": {
+  "trials": 64,
+  "success": 12,
+  "failure": 52,
+  "timeout": 0,
+  "mean_time_at_failure_s": 11.216538461538459,
+  "mean_envelope_at_failure": 0.960988461971283
+ },
+ "base_perturbed | p0.48 | v0.25 | w0.20 | d0.500": {
+  "trials": 64,
+  "success": 47,
+  "failure": 17,
+  "timeout": 0,
+  "mean_time_at_failure_s": 13.548235294117648,
+  "mean_envelope_at_failure": 1.0
+ },
+ "base_perturbed | p0.48 | v0.25 | w0.20 | d0.625": {
+  "trials": 64,
+  "success": 57,
+  "failure": 7,
+  "timeout": 0,
+  "mean_time_at_failure_s": 12.242857142857144,
+  "mean_envelope_at_failure": 0.9861143231391907
+ },
+ "base_perturbed | p0.48 | v0.25 | w0.20 | d0.750": {
+  "trials": 64,
+  "success": 63,
+  "failure": 1,
+  "timeout": 0,
+  "mean_time_at_failure_s": 8.9,
+  "mean_envelope_at_failure": 0.9009999632835388
+ },
+ "base_perturbed | p0.48 | v0.25 | w0.30 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.48 | v0.25 | w0.30 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.48 | v0.25 | w0.30 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.48 | v0.25 | w0.40 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.48 | v0.25 | w0.40 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.48 | v0.25 | w0.40 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.48 | v0.25 | w0.50 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.48 | v0.25 | w0.50 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.48 | v0.25 | w0.50 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.48 | v0.30 | w0.10 | d0.500": {
+  "trials": 64,
+  "success": 1,
+  "failure": 63,
+  "timeout": 0,
+  "mean_time_at_failure_s": 8.18063492063492,
+  "mean_envelope_at_failure": 0.8244857788085938
+ },
+ "base_perturbed | p0.48 | v0.30 | w0.10 | d0.625": {
+  "trials": 64,
+  "success": 2,
+  "failure": 62,
+  "timeout": 0,
+  "mean_time_at_failure_s": 9.406451612903224,
+  "mean_envelope_at_failure": 0.8955708742141724
+ },
+ "base_perturbed | p0.48 | v0.30 | w0.10 | d0.750": {
+  "trials": 64,
+  "success": 15,
+  "failure": 49,
+  "timeout": 0,
+  "mean_time_at_failure_s": 10.289795918367348,
+  "mean_envelope_at_failure": 0.9451919198036194
+ },
+ "base_perturbed | p0.48 | v0.30 | w0.20 | d0.500": {
+  "trials": 64,
+  "success": 55,
+  "failure": 9,
+  "timeout": 0,
+  "mean_time_at_failure_s": 11.597777777777777,
+  "mean_envelope_at_failure": 1.0
+ },
+ "base_perturbed | p0.48 | v0.30 | w0.20 | d0.625": {
+  "trials": 64,
+  "success": 60,
+  "failure": 4,
+  "timeout": 0,
+  "mean_time_at_failure_s": 12.005,
+  "mean_envelope_at_failure": 0.9775000214576721
+ },
+ "base_perturbed | p0.48 | v0.30 | w0.20 | d0.750": {
+  "trials": 64,
+  "success": 62,
+  "failure": 2,
+  "timeout": 0,
+  "mean_time_at_failure_s": 10.870000000000001,
+  "mean_envelope_at_failure": 0.9279999732971191
+ },
+ "base_perturbed | p0.48 | v0.30 | w0.30 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.48 | v0.30 | w0.30 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.48 | v0.30 | w0.30 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.48 | v0.30 | w0.40 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.48 | v0.30 | w0.40 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.48 | v0.30 | w0.40 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.48 | v0.30 | w0.50 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.48 | v0.30 | w0.50 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.48 | v0.30 | w0.50 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.48 | v0.35 | w0.10 | d0.500": {
+  "trials": 64,
+  "success": 6,
+  "failure": 58,
+  "timeout": 0,
+  "mean_time_at_failure_s": 7.806206896551725,
+  "mean_envelope_at_failure": 0.7963207364082336
+ },
+ "base_perturbed | p0.48 | v0.35 | w0.10 | d0.625": {
+  "trials": 64,
+  "success": 9,
+  "failure": 55,
+  "timeout": 0,
+  "mean_time_at_failure_s": 9.026181818181819,
+  "mean_envelope_at_failure": 0.88126540184021
+ },
+ "base_perturbed | p0.48 | v0.35 | w0.10 | d0.750": {
+  "trials": 64,
+  "success": 25,
+  "failure": 39,
+  "timeout": 0,
+  "mean_time_at_failure_s": 9.62871794871795,
+  "mean_envelope_at_failure": 0.9349230527877808
+ },
+ "base_perturbed | p0.48 | v0.35 | w0.20 | d0.500": {
+  "trials": 64,
+  "success": 59,
+  "failure": 5,
+  "timeout": 0,
+  "mean_time_at_failure_s": 9.768,
+  "mean_envelope_at_failure": 0.9413200616836548
+ },
+ "base_perturbed | p0.48 | v0.35 | w0.20 | d0.625": {
+  "trials": 64,
+  "success": 61,
+  "failure": 3,
+  "timeout": 0,
+  "mean_time_at_failure_s": 10.326666666666666,
+  "mean_envelope_at_failure": 0.9705999493598938
+ },
+ "base_perturbed | p0.48 | v0.35 | w0.20 | d0.750": {
+  "trials": 64,
+  "success": 63,
+  "failure": 1,
+  "timeout": 0,
+  "mean_time_at_failure_s": 8.08,
+  "mean_envelope_at_failure": 0.8272000551223755
+ },
+ "base_perturbed | p0.48 | v0.35 | w0.30 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.48 | v0.35 | w0.30 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.48 | v0.35 | w0.30 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.48 | v0.35 | w0.40 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.48 | v0.35 | w0.40 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.48 | v0.35 | w0.40 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.48 | v0.35 | w0.50 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.48 | v0.35 | w0.50 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.48 | v0.35 | w0.50 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.48 | v0.40 | w0.10 | d0.500": {
+  "trials": 64,
+  "success": 6,
+  "failure": 58,
+  "timeout": 0,
+  "mean_time_at_failure_s": 7.546206896551724,
+  "mean_envelope_at_failure": 0.7787240743637085
+ },
+ "base_perturbed | p0.48 | v0.40 | w0.10 | d0.625": {
+  "trials": 64,
+  "success": 17,
+  "failure": 47,
+  "timeout": 0,
+  "mean_time_at_failure_s": 7.957446808510638,
+  "mean_envelope_at_failure": 0.8131063580513
+ },
+ "base_perturbed | p0.48 | v0.40 | w0.10 | d0.750": {
+  "trials": 64,
+  "success": 31,
+  "failure": 33,
+  "timeout": 0,
+  "mean_time_at_failure_s": 9.087272727272728,
+  "mean_envelope_at_failure": 0.9059635996818542
+ },
+ "base_perturbed | p0.48 | v0.40 | w0.20 | d0.500": {
+  "trials": 64,
+  "success": 61,
+  "failure": 3,
+  "timeout": 0,
+  "mean_time_at_failure_s": 8.64,
+  "mean_envelope_at_failure": 0.8745999932289124
+ },
+ "base_perturbed | p0.48 | v0.40 | w0.20 | d0.625": {
+  "trials": 64,
+  "success": 61,
+  "failure": 3,
+  "timeout": 0,
+  "mean_time_at_failure_s": 9.146666666666667,
+  "mean_envelope_at_failure": 0.9178000092506409
+ },
+ "base_perturbed | p0.48 | v0.40 | w0.20 | d0.750": {
+  "trials": 64,
+  "success": 63,
+  "failure": 1,
+  "timeout": 0,
+  "mean_time_at_failure_s": 8.08,
+  "mean_envelope_at_failure": 0.8272000551223755
+ },
+ "base_perturbed | p0.48 | v0.40 | w0.30 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.48 | v0.40 | w0.30 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.48 | v0.40 | w0.30 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.48 | v0.40 | w0.40 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.48 | v0.40 | w0.40 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.48 | v0.40 | w0.40 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.48 | v0.40 | w0.50 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.48 | v0.40 | w0.50 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.48 | v0.40 | w0.50 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.54 | v0.30 | w0.10 | d0.500": {
+  "trials": 64,
+  "success": 1,
+  "failure": 63,
+  "timeout": 0,
+  "mean_time_at_failure_s": 7.3901587301587295,
+  "mean_envelope_at_failure": 0.75605708360672
+ },
+ "base_perturbed | p0.54 | v0.30 | w0.10 | d0.625": {
+  "trials": 64,
+  "success": 2,
+  "failure": 62,
+  "timeout": 0,
+  "mean_time_at_failure_s": 8.58225806451613,
+  "mean_envelope_at_failure": 0.8411644697189331
+ },
+ "base_perturbed | p0.54 | v0.30 | w0.10 | d0.750": {
+  "trials": 64,
+  "success": 9,
+  "failure": 55,
+  "timeout": 0,
+  "mean_time_at_failure_s": 10.269454545454547,
+  "mean_envelope_at_failure": 0.9302582740783691
+ },
+ "base_perturbed | p0.54 | v0.30 | w0.20 | d0.500": {
+  "trials": 64,
+  "success": 49,
+  "failure": 15,
+  "timeout": 0,
+  "mean_time_at_failure_s": 11.331999999999999,
+  "mean_envelope_at_failure": 0.9771999716758728
+ },
+ "base_perturbed | p0.54 | v0.30 | w0.20 | d0.625": {
+  "trials": 64,
+  "success": 53,
+  "failure": 11,
+  "timeout": 0,
+  "mean_time_at_failure_s": 11.694545454545455,
+  "mean_envelope_at_failure": 0.9733272790908813
+ },
+ "base_perturbed | p0.54 | v0.30 | w0.20 | d0.750": {
+  "trials": 64,
+  "success": 63,
+  "failure": 1,
+  "timeout": 0,
+  "mean_time_at_failure_s": 8.9,
+  "mean_envelope_at_failure": 0.9009999632835388
+ },
+ "base_perturbed | p0.54 | v0.30 | w0.30 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.54 | v0.30 | w0.30 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.54 | v0.30 | w0.30 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.54 | v0.30 | w0.40 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.54 | v0.30 | w0.40 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.54 | v0.30 | w0.40 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.54 | v0.30 | w0.50 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.54 | v0.30 | w0.50 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "base_perturbed | p0.54 | v0.30 | w0.50 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.36 | v0.30 | w0.10 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.36 | v0.30 | w0.10 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.36 | v0.30 | w0.20 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.36 | v0.30 | w0.20 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.36 | v0.30 | w0.30 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.36 | v0.30 | w0.30 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.36 | v0.30 | w0.40 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.36 | v0.30 | w0.40 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.36 | v0.30 | w0.50 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.36 | v0.30 | w0.50 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.25 | w0.10 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.25 | w0.10 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.25 | w0.10 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.25 | w0.20 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.25 | w0.20 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.25 | w0.20 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.25 | w0.30 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.25 | w0.30 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.25 | w0.30 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.25 | w0.40 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.25 | w0.40 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.25 | w0.40 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.25 | w0.50 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.25 | w0.50 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.25 | w0.50 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.30 | w0.10 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.30 | w0.10 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.30 | w0.10 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.30 | w0.20 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.30 | w0.20 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.30 | w0.20 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.30 | w0.30 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.30 | w0.30 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.30 | w0.30 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.30 | w0.40 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.30 | w0.40 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.30 | w0.40 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.30 | w0.50 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.30 | w0.50 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.30 | w0.50 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.35 | w0.10 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.35 | w0.10 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.35 | w0.10 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.35 | w0.20 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.35 | w0.20 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.35 | w0.20 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.35 | w0.30 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.35 | w0.30 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.35 | w0.30 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.35 | w0.40 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.35 | w0.40 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.35 | w0.40 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.35 | w0.50 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.35 | w0.50 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.35 | w0.50 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.40 | w0.10 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.40 | w0.10 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.40 | w0.10 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.40 | w0.20 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.40 | w0.20 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.40 | w0.20 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.40 | w0.30 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.40 | w0.30 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.40 | w0.30 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.40 | w0.40 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.40 | w0.40 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.40 | w0.40 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.40 | w0.50 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.40 | w0.50 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.48 | v0.40 | w0.50 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.54 | v0.30 | w0.10 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.54 | v0.30 | w0.10 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.54 | v0.30 | w0.10 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.54 | v0.30 | w0.20 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.54 | v0.30 | w0.20 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.54 | v0.30 | w0.20 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.54 | v0.30 | w0.30 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.54 | v0.30 | w0.30 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.54 | v0.30 | w0.30 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.54 | v0.30 | w0.40 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.54 | v0.30 | w0.40 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.54 | v0.30 | w0.40 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.54 | v0.30 | w0.50 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.54 | v0.30 | w0.50 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_nominal | p0.54 | v0.30 | w0.50 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.36 | v0.30 | w0.10 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.36 | v0.30 | w0.10 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.36 | v0.30 | w0.20 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.36 | v0.30 | w0.20 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.36 | v0.30 | w0.30 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.36 | v0.30 | w0.30 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.36 | v0.30 | w0.40 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.36 | v0.30 | w0.40 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.36 | v0.30 | w0.50 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.36 | v0.30 | w0.50 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.25 | w0.10 | d0.500": {
+  "trials": 64,
+  "success": 59,
+  "failure": 5,
+  "timeout": 0,
+  "mean_time_at_failure_s": 12.592000000000002,
+  "mean_envelope_at_failure": 1.0
+ },
+ "tuned_perturbed | p0.48 | v0.25 | w0.10 | d0.625": {
+  "trials": 64,
+  "success": 63,
+  "failure": 1,
+  "timeout": 0,
+  "mean_time_at_failure_s": 13.08,
+  "mean_envelope_at_failure": 1.0
+ },
+ "tuned_perturbed | p0.48 | v0.25 | w0.10 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.25 | w0.20 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.25 | w0.20 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.25 | w0.20 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.25 | w0.30 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.25 | w0.30 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.25 | w0.30 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.25 | w0.40 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.25 | w0.40 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.25 | w0.40 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.25 | w0.50 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.25 | w0.50 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.25 | w0.50 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.30 | w0.10 | d0.500": {
+  "trials": 64,
+  "success": 61,
+  "failure": 3,
+  "timeout": 0,
+  "mean_time_at_failure_s": 11.706666666666665,
+  "mean_envelope_at_failure": 1.0
+ },
+ "tuned_perturbed | p0.48 | v0.30 | w0.10 | d0.625": {
+  "trials": 64,
+  "success": 63,
+  "failure": 1,
+  "timeout": 0,
+  "mean_time_at_failure_s": 13.1,
+  "mean_envelope_at_failure": 1.0
+ },
+ "tuned_perturbed | p0.48 | v0.30 | w0.10 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.30 | w0.20 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.30 | w0.20 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.30 | w0.20 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.30 | w0.30 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.30 | w0.30 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.30 | w0.30 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.30 | w0.40 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.30 | w0.40 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.30 | w0.40 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.30 | w0.50 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.30 | w0.50 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.30 | w0.50 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.35 | w0.10 | d0.500": {
+  "trials": 64,
+  "success": 63,
+  "failure": 1,
+  "timeout": 0,
+  "mean_time_at_failure_s": 10.82,
+  "mean_envelope_at_failure": 1.0
+ },
+ "tuned_perturbed | p0.48 | v0.35 | w0.10 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.35 | w0.10 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.35 | w0.20 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.35 | w0.20 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.35 | w0.20 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.35 | w0.30 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.35 | w0.30 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.35 | w0.30 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.35 | w0.40 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.35 | w0.40 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.35 | w0.40 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.35 | w0.50 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.35 | w0.50 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.35 | w0.50 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.40 | w0.10 | d0.500": {
+  "trials": 64,
+  "success": 63,
+  "failure": 1,
+  "timeout": 0,
+  "mean_time_at_failure_s": 10.42,
+  "mean_envelope_at_failure": 1.0
+ },
+ "tuned_perturbed | p0.48 | v0.40 | w0.10 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.40 | w0.10 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.40 | w0.20 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.40 | w0.20 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.40 | w0.20 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.40 | w0.30 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.40 | w0.30 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.40 | w0.30 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.40 | w0.40 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.40 | w0.40 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.40 | w0.40 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.40 | w0.50 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.40 | w0.50 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.48 | v0.40 | w0.50 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.54 | v0.30 | w0.10 | d0.500": {
+  "trials": 64,
+  "success": 56,
+  "failure": 8,
+  "timeout": 0,
+  "mean_time_at_failure_s": 11.42,
+  "mean_envelope_at_failure": 0.9903249740600586
+ },
+ "tuned_perturbed | p0.54 | v0.30 | w0.10 | d0.625": {
+  "trials": 64,
+  "success": 61,
+  "failure": 3,
+  "timeout": 0,
+  "mean_time_at_failure_s": 11.84666666666667,
+  "mean_envelope_at_failure": 1.0
+ },
+ "tuned_perturbed | p0.54 | v0.30 | w0.10 | d0.750": {
+  "trials": 64,
+  "success": 63,
+  "failure": 1,
+  "timeout": 0,
+  "mean_time_at_failure_s": 13.22,
+  "mean_envelope_at_failure": 1.0
+ },
+ "tuned_perturbed | p0.54 | v0.30 | w0.20 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.54 | v0.30 | w0.20 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.54 | v0.30 | w0.20 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.54 | v0.30 | w0.30 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.54 | v0.30 | w0.30 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.54 | v0.30 | w0.30 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.54 | v0.30 | w0.40 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.54 | v0.30 | w0.40 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.54 | v0.30 | w0.40 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.54 | v0.30 | w0.50 | d0.500": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.54 | v0.30 | w0.50 | d0.625": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ },
+ "tuned_perturbed | p0.54 | v0.30 | w0.50 | d0.750": {
+  "trials": 64,
+  "success": 64,
+  "failure": 0,
+  "timeout": 0,
+  "mean_time_at_failure_s": null
+ }
+}

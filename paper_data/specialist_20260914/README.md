@@ -65,6 +65,19 @@ push, trot survival at 0.10 m rises 0.07, 0.15, 0.29 across duty 0.50, 0.625,
 0.75, 0.625, 0.50, 0.50, 0.50 across widths 0.10 to 0.50 m, which is monotone.
 Full explanation, tables and limits: `docs/selector_objective.md`.
 
+## Figures (`figures/`)
+
+Figures already rendered from the data in this folder. Each is saved as PNG and
+PDF, and most folders also hold the table the figure was drawn from.
+
+| Folder | Figures |
+|---|---|
+| `trends/` | cost of transport against stance width and against duty factor, one panel per gait |
+| `surfaces/` | 3-D speed by duty factor surfaces at 0.48 s, pooled and per width |
+| `period_surfaces/` | the same surfaces at each sampled period |
+| `selector/` | selected duty factor against width, candidate energy and compliance, and selected against achieved duty factor |
+| `push/` | push success against width per duty factor, against period and speed, and survival over time, per gait |
+
 ## Known gaps
 
 - The walk push study has the base arms only. No walk push fine-tune was trained.

@@ -1,3 +1,9 @@
+# Beam-walking RL experiments
+
+The training and evaluation pipeline for the paper's RL policies is described in
+[PIPELINE.md](PIPELINE.md) and runs from `scripts/pipelines/specialist_pipeline.sh`.
+Shareable data sets live in `paper_data/`.
+
 # Template for Isaac Lab Projects
 
 ## Overview

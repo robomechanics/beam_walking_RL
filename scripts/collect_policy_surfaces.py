@@ -16,22 +16,23 @@ import numpy as np
 # --task selects the frozen seed-2 paper definitions (default) or the unified
 # seed-5 definitions; everything downstream reads from the chosen module.
 _pre = argparse.ArgumentParser(add_help=False)
-_pre.add_argument("--task", choices=("paper", "unified", "specialist"), default="paper")
+_pre.add_argument("--task", choices=("paper", "unified", "specialist", "narrow_specialist"), default="paper")
 _pre.add_argument("--checkpoint", type=Path)
 _pre_args = _pre.parse_known_args()[0]
 TASK_VARIANT = _pre_args.task
 import importlib  # noqa: E402
 _data = importlib.import_module({
     "paper": "policy_surface_data", "unified": "unified_surface_data",
-    "specialist": "specialist_surface_data"}[TASK_VARIANT])
+    "specialist": "specialist_surface_data",
+    "narrow_specialist": "narrow_specialist_surface_data"}[TASK_VARIANT])
 if _pre_args.checkpoint is not None:
     # Specialists have one checkpoint per gait, bound here from the command line.
     if TASK_VARIANT == "paper":
         raise SystemExit("--checkpoint is not accepted for the frozen paper task")
     _data.CHECKPOINT = _pre_args.checkpoint.resolve()
     _data.CHECKPOINT_SHA256 = _data.sha256(_data.CHECKPOINT)
-elif TASK_VARIANT == "specialist":
-    raise SystemExit("--task specialist requires --checkpoint")
+elif TASK_VARIANT in ("specialist", "narrow_specialist"):
+    raise SystemExit(f"--task {TASK_VARIANT} requires --checkpoint")
 CHECKPOINT, CHECKPOINT_SHA256 = _data.CHECKPOINT, _data.CHECKPOINT_SHA256
 GRID_SEED, SMOKE_SEED, ROOT = _data.GRID_SEED, _data.SMOKE_SEED, _data.ROOT
 SOURCE_FILES, TASK_FILES, TRIALS = _data.SOURCE_FILES, _data.TASK_FILES, _data.TRIALS
@@ -49,7 +50,7 @@ from isaaclab.app import AppLauncher
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--output", type=Path, required=True)
 parser.add_argument("--smoke", action="store_true")
-parser.add_argument("--task", choices=("paper", "unified", "specialist"), default="paper")
+parser.add_argument("--task", choices=("paper", "unified", "specialist", "narrow_specialist"), default="paper")
 parser.add_argument("--checkpoint", type=Path,
                     help="Specialist task: the gait's checkpoint (model_1799.pt)")
 parser.add_argument("--gaits", choices=GAITS, nargs="+",
@@ -109,7 +110,7 @@ if args.gaits:
     CONDITIONS = [c for c in CONDITIONS if c[0] in args.gaits]
     if not CONDITIONS:
         parser.error("No conditions remain for the requested gaits")
-if TASK_VARIANT == "specialist":
+if TASK_VARIANT in ("specialist", "narrow_specialist"):
     _gait = _data.specialist_gait(_data.read_training(CHECKPOINT))
     if {c[0] for c in CONDITIONS} != {_gait}:
         parser.error(f"Specialist checkpoint is a {_gait} policy; pass --gaits {_gait}")
@@ -127,7 +128,10 @@ if EXPECTED_CHECKPOINT is None or sha256(CHECKPOINT) != EXPECTED_CHECKPOINT:
 training_bytes = (CHECKPOINT.parent / "provenance.json").read_bytes()
 training = json.loads(training_bytes)
 task_hash = hashlib.sha256(b"".join((ROOT / p).read_bytes() for p in TASK_FILES)).hexdigest()
-if (training.get("task_sha256") != task_hash or training.get("seed") != TRAINING_SEED
+if hasattr(_data, "accepts_training"):
+    if training.get("task_sha256") != task_hash or not _data.accepts_training(training):
+        parser.error("Policy task/training provenance mismatch")
+elif (training.get("task_sha256") != task_hash or training.get("seed") != TRAINING_SEED
         or training.get("fresh_training") is not True):
     parser.error("Policy task/training provenance mismatch")
 from evaluation_capacity import check_evaluation_capacity
@@ -144,7 +148,7 @@ from rsl_rl.runners import OnPolicyRunner
 from beam_walking.experiment.task import BeamEnv, BeamEnvCfg, BeamPPORunnerCfg, command
 if TASK_VARIANT == "unified":
     BeamEnv, BeamEnvCfg, BeamPPORunnerCfg = _data.env_classes()
-elif TASK_VARIANT == "specialist":
+elif TASK_VARIANT in ("specialist", "narrow_specialist"):
     BeamEnv, BeamEnvCfg, BeamPPORunnerCfg = _data.env_classes(training)
 
 
@@ -377,7 +381,7 @@ def main():
                 or saved.get("common_step_counter") != 86400
                 or runner.current_learning_iteration != 1799):
             raise ValueError("Loaded policy identity/iteration mismatch")
-        if TASK_VARIANT in ("unified", "specialist"):
+        if TASK_VARIANT in ("unified", "specialist", "narrow_specialist"):
             _data.verify_training(training, saved)
         policy = runner.get_inference_policy(device=env.device)
         robot_mass = float(env.scene["robot"].data.default_mass[0].sum().cpu())

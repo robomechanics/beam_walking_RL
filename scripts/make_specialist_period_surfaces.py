@@ -30,6 +30,7 @@ from unified_surface_data import (  # noqa: E402
 )
 
 GAIT_COLORS = {"trot": "#0072BD", "walk": "#D95319"}
+TITLE = "Gait specialists"
 KEYS = ("gait", "speed", "period", "step_width", "command_df")
 
 
@@ -159,7 +160,7 @@ def plot(factors, output, stem, metric, label, zlim):
         axis.set_yticks(SPEEDS)
         axis.view_init(elev=20, azim=-72)
         axis.set_title(f"Period {period:.2f} s", fontsize=12)
-    fig.suptitle(f"Gait specialists: {label.lower()} across the trained period range",
+    fig.suptitle(f"{TITLE}: {label.lower()} across the trained period range",
                  fontsize=15, y=.99)
     fig.legend(handles=[Patch(facecolor=GAIT_COLORS[g], edgecolor=GAIT_COLORS[g],
                               label=g.title(), alpha=.72) for g in GAIT_COLORS],
@@ -177,12 +178,18 @@ def main():
                         help="Period-sweep grid directories, one per gait")
     parser.add_argument("--output", type=Path,
                         default=ROOT / "PAPER_GRAPHS/specialist_period_surfaces")
+    parser.add_argument("--title", default="Gait specialists")
     args = parser.parse_args()
+    global WIDTHS
     manifests, frames = [], []
     for directory in args.input:
         manifest, trials = load_sweep(directory)
         manifests.append(manifest)
         frames.append(trials)
+    global TITLE
+    TITLE = args.title
+    if manifests[0].get("width_levels_m"):
+        WIDTHS = tuple(manifests[0]["width_levels_m"])
     gaits = [sorted({r["gait"] for r in m["conditions"]}) for m in manifests]
     if any(set(a) & set(b) for i, a in enumerate(gaits) for b in gaits[i + 1:]):
         raise ValueError("Each gait must come from exactly one sweep")

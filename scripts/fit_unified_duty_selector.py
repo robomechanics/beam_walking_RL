@@ -172,6 +172,13 @@ def main():
         parser.error("Primary fitting parameters are fixed; use --exploratory")
     args.output.mkdir(parents=True, exist_ok=True)
 
+    # Narrow-stance grids record their width domain; set it before any row is
+    # validated so contexts below 0.10 m are accepted.
+    import json as _json
+    from beam_walking.experiment import unified_duty_selector as _selector
+    _manifest = _json.loads((args.trials[0].parent / "surface_manifest.json").read_text())
+    if _manifest.get("width_range_m"):
+        _selector.set_width_range(_manifest["width_range_m"])
     rows, grids = [], []
     for trials_path in args.trials:
         grid_rows, manifest, hashes = validate_completed_surface_grid(trials_path)
