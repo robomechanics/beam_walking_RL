@@ -33,7 +33,7 @@ swing ticks. Commands change only at gait-cycle boundaries.
 | # | Stage | Script | Key settings |
 |---|---|---|---|
 | 1 | Clean training | `scripts/narrow_specialist_experiment.py train --gait G` | 3,072 envs, 1,800 PPO updates, seed 5, 10% grounded starts |
-| 2 | Push fine-tune | `scripts/narrow_specialist_push_experiment.py train --gait G --perturbation --initialize_from <clean>` | warm start, 1,200 updates, seed 3 |
+| 2 | Push fine-tune | `scripts/narrow_specialist_push_experiment.py train --gait G --perturbation --initialize_from <previous>` | two consecutive 1,200-update segments (2,400 updates), the first warm-started from the clean policy, the second from the first; seed 3 |
 | 3 | Command fidelity | `scripts/evaluate_policy.py --task narrow_specialist` | every period of the gait, all widths and duty anchors, 64 held-out trials, 0.30 m/s |
 | 4 | Duty-contrast gate | `scripts/narrow_fidelity_gate.py --criterion contrast` | stops the pipeline if the duty contrast collapses |
 | 5 | Period sweep | `scripts/collect_policy_surfaces.py --task narrow_specialist --period-sweep` | trot 0.36/0.40/0.48/0.54 s, walk 0.40/0.48/0.54 s, 4 speeds, 6 widths, feasible duties, 32 matched trials |
@@ -49,6 +49,19 @@ Each evaluation waits for 9 GB of free host memory and retries up to three
 times if its start is refused.
 
 ### Training details
+
+**Training budget per gait.** One PPO update is 3,072 simulated robots each
+taking 48 control steps, 147,456 control steps in total, about 49 minutes of
+simulated robot time.
+
+| Phase | Updates | Control steps | Simulated robot time | Wall-clock, measured |
+|---|---|---|---|---|
+| Clean training | 1,800 | 265.4 million | 1,475 hours | 29 min |
+| Push fine-tune, segment 1 | 1,200 | 176.9 million | 983 hours | 22 min |
+| Push fine-tune, segment 2 | 1,200 | 176.9 million | 983 hours | 22 min |
+| **Push-trained policy, total** | **4,200** | **619.3 million** | **3,441 hours** | **73 min** |
+
+Both gaits together take about 2 h 25 min of training.
 
 - **PPO.** 48-step rollouts, 5 epochs, 4 minibatches, learning rate 1e-3
   (adaptive), γ 0.995, λ 0.95, clip 0.2, entropy 0.001. Actor and critic MLPs
@@ -87,9 +100,12 @@ only from the tag `pre-specialist-data`.
   0.58–0.67 and the duty contrast the paper depends on collapsed.
 - **Self-collision on.** At 0.05 m the feet are millimetres apart. Without
   collision the legs could pass through each other and flatter narrow stances.
-- **1,200 fine-tune updates.** An earlier push fine-tune reached about 94% of
-  its 1,800-update reward by update 1,200. The shorter run was chosen to save
-  time.
+- **2,400 fine-tune updates, 4,200 in total per policy.** The fine-tune runs as
+  two 1,200-update segments on top of 1,800 clean updates. After one segment
+  trot reward was 229 against 443 for the clean policy, and 34% of training
+  episodes still ended in a fall; walk had 16% falling. The second segment
+  continues from the first and records its segment number and root clean
+  checkpoint. Final checkpoints are `model_1199.pt`.
 - **Push-trained policies are the reported controller.** This follows the
   mentor's direction to avoid behaviour that only works in a noise-free
   simulator. The cost is measurable: a push-trained trot policy realized duty
@@ -107,12 +123,50 @@ only from the tag `pre-specialist-data`.
   sweep already contains the 0.48 s slice, so no separate fixed-period grid is
   collected.
 
+## Duty-factor anchor spacing
+
+Trot and walk are trained and evaluated at differently spaced duty factors:
+
+| | Trot | Walk |
+|---|---|---|
+| Anchors | 0.50, 0.625, 0.75 | 0.75, 0.80, 0.85, 0.90 |
+| Step between anchors | 0.125 | 0.05 |
+| Swing difference between neighbours at 0.48 s | 3 control ticks | about 1 control tick |
+
+The only shared value is 0.75. At a 0.48 s period the walk schedules round to
+0.750, 0.833, 0.875 and 0.917, so the realized walk levels are unevenly spaced
+and change with period.
+
+**Why it matters**
+
+- **Neighbouring walk levels nearly merge once executed.** Their spacing is the
+  size of the controller's typical timing error. In the earlier specialist
+  data, walk 0.85 ran at 0.859 and walk 0.90 at 0.879. Push training shifts
+  duty factor slightly, which narrows the gap further.
+- **Resolution differs between gaits.** Trot trends and selector choices move
+  in 0.125 steps, walk in 0.05 steps. Trot curves look step-like and walk
+  curves smooth for that reason alone, and part of the U shape in the trot
+  selector comes from having only three candidates.
+- **Training exposure is not affected.** The gaits are separate policies, and
+  every anchor receives millions of training steps.
+
+**How to analyze with it**
+
+- Use the realized duty factor, `achieved_df`, as a continuous variable
+  instead of the anchor labels.
+- Compare trot and walk at matched realized duty factor, around 0.75 where the
+  two ranges meet, as Investigation 1 does.
+- Before claiming a difference between neighbouring walk anchors, check that
+  their `achieved_df` distributions actually separate.
+- Do not interpret differences in selector step size between gaits as a result.
+
 ## Outputs
 
 | Location | Content |
 |---|---|
 | `results/narrow_specialist_{trot,walk}_seed5_3072_<tag>/` | clean checkpoints |
-| `results/narrow_specialist_push_{trot,walk}_from_seed5_3072_<tag>/` | push-trained checkpoints |
+| `results/narrow_specialist_push_{trot,walk}_from_seed5_3072_<tag>/` | push fine-tune, first segment |
+| `results/narrow_specialist_push_{trot,walk}_seg2_3072_<tag>/` | push-trained checkpoints used for every evaluation |
 | `results/validation_narrow_<gait>_v030_p<period>_<tag>/` | fidelity archives, tables, plots |
 | `results/<tag>_fidelity_gate.json` | gate report, including where in the gait phase contact deviates |
 | `results/narrow_surfaces_sweep_<gait>_<tag>/grid/` | period-sweep archives and `surface_trials.csv` |

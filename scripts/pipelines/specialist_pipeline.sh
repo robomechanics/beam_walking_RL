@@ -29,7 +29,10 @@ wait_for_ram() { local waited=0
   while [ "$(awk '/MemAvailable/{print int($2/1024)}' /proc/meminfo)" -lt 14800 ]; do
     sync; sleep 30; waited=$((waited+30)); [ $waited -ge 1200 ] && return 0; done; }
 clean() { echo results/narrow_specialist_$1_seed5_3072_${TAG}/model_1799.pt; }
-ck() { echo results/narrow_specialist_push_$1_from_seed5_3072_${TAG}/model_1799.pt; }
+FINAL=model_1199.pt   # push fine-tune segments are 1,200 updates each
+seg1() { echo results/narrow_specialist_push_$1_from_seed5_3072_${TAG}; }
+seg2() { echo results/narrow_specialist_push_$1_seg2_3072_${TAG}; }
+ck() { echo $(seg2 $1)/$FINAL; }
 periods_of() { [ "$1" = walk ] && echo ".40 .48 .54" || echo ".36 .48 .54"; }
 
 # 1. Clean training.
@@ -43,16 +46,24 @@ for g in trot walk; do
     --output results/narrow_specialist_${g}_seed5_3072_${TAG} || exit 1
 done
 
-# 2. Push fine-tunes.
+# 2. Push fine-tunes: two consecutive 1,200-update segments per gait (2,400
+#    updates). Narrow stance under pushes learns slowly: after one segment a
+#    third of trot episodes still ended in a fall and reward was still rising.
 for g in trot walk; do
-  [ -f "$(ck $g)" ] && continue
-  rm -rf results/narrow_specialist_push_${g}_smoke_${TAG} results/narrow_specialist_push_${g}_from_seed5_3072_${TAG}
-  run push_smoke_$g $P scripts/narrow_specialist_push_experiment.py smoke --gait $g --perturbation \
-    --num_envs 64 --steps 96 --headless --output results/narrow_specialist_push_${g}_smoke_${TAG} || exit 1
-  wait_for_ram
-  run push_train_$g $P scripts/narrow_specialist_push_experiment.py train --gait $g --perturbation \
-    --initialize_from "$(clean $g)" --headless \
-    --output results/narrow_specialist_push_${g}_from_seed5_3072_${TAG} || exit 1
+  if [ ! -f "$(seg1 $g)/$FINAL" ]; then
+    rm -rf results/narrow_specialist_push_${g}_smoke_${TAG} "$(seg1 $g)"
+    run push_smoke_$g $P scripts/narrow_specialist_push_experiment.py smoke --gait $g --perturbation \
+      --num_envs 64 --steps 96 --headless --output results/narrow_specialist_push_${g}_smoke_${TAG} || exit 1
+    wait_for_ram
+    run push_train_$g $P scripts/narrow_specialist_push_experiment.py train --gait $g --perturbation \
+      --initialize_from "$(clean $g)" --headless --output "$(seg1 $g)" || exit 1
+  fi
+  if [ ! -f "$(ck $g)" ]; then
+    rm -rf "$(seg2 $g)"
+    wait_for_ram
+    run push_train2_$g $P scripts/narrow_specialist_push_experiment.py train --gait $g --perturbation \
+      --initialize_from "$(seg1 $g)/$FINAL" --headless --output "$(seg2 $g)" || exit 1
+  fi
 done
 
 # Evaluations below run trot and walk side by side. Each is an independent
@@ -172,7 +183,9 @@ done
 for d in results/narrow_specialist_*_3072_${TAG}; do
   n=$(basename $d); mkdir -p $OUT/policies/$n
   cp $d/provenance.json $d/agent.yaml $d/env.yaml $OUT/policies/$n/ 2>/dev/null
-  sha256sum $d/model_1799.pt | sed "s|$d/||" > $OUT/policies/$n/model_1799.sha256
+  for m in $d/model_1799.pt $d/model_1199.pt; do
+    [ -f $m ] && sha256sum $m | sed "s|$d/||" > $OUT/policies/$n/$(basename $m .pt).sha256
+  done
 done
 [ -d $FIT ] && cp -r $FIT $OUT/selector_fit
 [ -d results/narrow_selector_promoted_${TAG} ] && cp -r results/narrow_selector_promoted_${TAG} $OUT/selector_promoted

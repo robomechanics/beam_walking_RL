@@ -46,7 +46,8 @@ def push_lineage_id(training_source_sha256, seed, parent_checkpoint_sha256, gait
 
 
 def verify_parent(checkpoint, gait):
-    """The parent must be the final fresh specialist checkpoint of this gait."""
+    """The parent is the final checkpoint of this gait's fresh specialist, or of a
+    previous push fine-tune segment that continued from one."""
     import torch
 
     checkpoint = Path(checkpoint).resolve()
@@ -55,15 +56,26 @@ def verify_parent(checkpoint, gait):
     parent = json.loads(provenance_path.read_text())
     state = torch.load(checkpoint, map_location="cpu", weights_only=False)
     infos = state.get("infos") or {}
-    if (parent.get("schema") != SPECIALIST_SCHEMA
-            or parent.get("specialist_gait") != gait
-            or parent.get("fresh_training") is not True
-            or parent.get("primary_training_protocol") is not True
-            or parent.get("training_lineage_id") != infos.get("training_lineage_id")
-            or parent.get("task_sha256") != infos.get("task_sha256")
-            or state.get("iter") != parent.get("training_iterations_requested", 0) - 1):
-        raise ValueError("Parent is not the final fresh specialist checkpoint for this gait")
+    common = (parent.get("specialist_gait") == gait
+              and parent.get("training_lineage_id") == infos.get("training_lineage_id")
+              and parent.get("task_sha256") == infos.get("task_sha256")
+              and state.get("iter") == parent.get("training_iterations_requested", 0) - 1)
+    fresh_parent = (parent.get("schema") == SPECIALIST_SCHEMA
+                    and parent.get("fresh_training") is True
+                    and parent.get("primary_training_protocol") is True)
+    segment_parent = (parent.get("schema") == PUSH_SCHEMA
+                      and parent.get("training_kind") == PUSH_TRAINING_KIND
+                      and parent.get("warm_start") is True
+                      and parent.get("external_pushes") is True
+                      and infos.get("training_kind") == PUSH_TRAINING_KIND)
+    if not (common and (fresh_parent or segment_parent)):
+        raise ValueError("Parent is not a final specialist or push fine-tune checkpoint for this gait")
+    root = (parent.get("root_parent_checkpoint_sha256")
+            or parent.get("parent_checkpoint_sha256") if segment_parent else digest)
     return {
+        "parent_training_kind": parent.get("training_kind", "fresh_specialist"),
+        "root_parent_checkpoint_sha256": root,
+        "push_segment": (int(parent.get("push_segment", 1)) + 1) if segment_parent else 1,
         "parent_checkpoint": str(checkpoint),
         "parent_checkpoint_sha256": digest,
         "parent_provenance_sha256": sha256(provenance_path.read_bytes()).hexdigest(),
