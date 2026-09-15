@@ -77,6 +77,22 @@ Both gaits together take about 2 h 25 min of training.
 - **Pushes during fine-tuning.** Random world-frame base force up to 25 N and
   torque up to 3 N m, held 0.10–0.40 s at a time, ramping from 10% to 100% of
   that bound over the first 10 s of each episode.
+- **Segmented fine-tune.** Each push segment is a new process warm-started from
+  the previous checkpoint, not a resumed run:
+  - Only the policy and critic weights carry over, including the action noise.
+    The Adam state and the adaptive learning rate reset, so each segment starts
+    again at 1e-3. Two 1,200-update segments are not equivalent to one
+    2,400-update run, and a brief reward dip after the boundary is expected.
+  - `common_step_counter` carries over and accumulates, so the curriculum does
+    not restart. Segment 1 starts at 86,400 steps and segment 2 at 144,000, both
+    past the anchor-only phases, on the full command distribution.
+  - Both segments use seed 3, so segment 2 restarts the random streams for
+    pushes, commands and resets that segment 1 began with. Trajectories still
+    differ because the policy differs.
+  - Update numbering restarts in each output directory. Segment 2's
+    `model_1199.pt` is update 4,199 of the policy overall. TensorBoard curves
+    and watcher reports count from 0 in each segment, so plot segments end to
+    end when comparing.
 
 ### Selector
 
@@ -194,6 +210,28 @@ Set `TAG` to start a separate run, and `PYTHON_BIN` if the Isaac Lab Python is
 elsewhere. The script is resumable: a stage whose output already has a
 completion marker is skipped, so rerunning after an interruption continues
 where it stopped.
+
+While a run is in progress:
+
+- **Resuming restarts an unfinished training stage from update 0.** A trainer
+  that stops before its final checkpoint has its directory emptied and is
+  retrained. Warm starts accept only a final checkpoint, so intermediate
+  checkpoints cannot be continued.
+- **Do not edit the training source until the evaluations finish.** Fidelity,
+  sweeps and selector validation accept a push-trained checkpoint only if the
+  files listed in `PUSH_TRAINING_SOURCE_FILES` (`narrow_specialist_push.py`)
+  still hash to the value recorded at training time. The list includes
+  `scripts/watch_training.py` and the training launcher.
+- **Do not edit the running copy of the pipeline script.** Bash reads a script
+  as it executes, so an in-place edit can corrupt the stages still to come.
+  Stop the script, edit, and relaunch.
+- **Stop a trainer with its watcher.** A trainer killed by a signal skips its
+  own cleanup, leaving the watcher alive. Before emptying a directory, the
+  script stops any watcher still attached to it, so its final report cannot
+  block the retry.
+- **Status gaps after a relaunch are expected.** If the pipeline script is
+  stopped while a trainer keeps running, that stage never writes its `ok` line.
+  The relaunched script finds the final checkpoint and skips the stage.
 
 ## Code map
 

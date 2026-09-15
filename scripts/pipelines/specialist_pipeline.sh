@@ -34,11 +34,22 @@ seg1() { echo results/narrow_specialist_push_$1_from_seed5_3072_${TAG}; }
 seg2() { echo results/narrow_specialist_push_$1_seg2_3072_${TAG}; }
 ck() { echo $(seg2 $1)/$FINAL; }
 periods_of() { [ "$1" = walk ] && echo ".40 .48 .54" || echo ".36 .48 .54"; }
+# Empty a training output directory. A trainer stopped by a signal can leave its
+# watcher alive, and the watcher's final report would land in the emptied
+# directory and make the retry refuse to start. Stop that watcher first.
+fresh() { local d waited
+  for d; do
+    pkill -f "watch_training.py --run $PWD/$d " 2>/dev/null
+    waited=0
+    while pgrep -f "watch_training.py --run $PWD/$d " >/dev/null && [ $waited -lt 60 ]; do
+      sleep 1; waited=$((waited+1)); done
+    rm -rf "$d"
+  done; }
 
 # 1. Clean training.
 for g in trot walk; do
   [ -f "$(clean $g)" ] && continue
-  rm -rf results/narrow_specialist_${g}_smoke_${TAG} results/narrow_specialist_${g}_seed5_3072_${TAG}
+  fresh results/narrow_specialist_${g}_smoke_${TAG} results/narrow_specialist_${g}_seed5_3072_${TAG}
   run smoke_$g $P scripts/narrow_specialist_experiment.py smoke --gait $g --num_envs 64 --steps 96 --headless \
     --output results/narrow_specialist_${g}_smoke_${TAG} || exit 1
   wait_for_ram
@@ -51,7 +62,7 @@ done
 #    third of trot episodes still ended in a fall and reward was still rising.
 for g in trot walk; do
   if [ ! -f "$(seg1 $g)/$FINAL" ]; then
-    rm -rf results/narrow_specialist_push_${g}_smoke_${TAG} "$(seg1 $g)"
+    fresh results/narrow_specialist_push_${g}_smoke_${TAG} "$(seg1 $g)"
     run push_smoke_$g $P scripts/narrow_specialist_push_experiment.py smoke --gait $g --perturbation \
       --num_envs 64 --steps 96 --headless --output results/narrow_specialist_push_${g}_smoke_${TAG} || exit 1
     wait_for_ram
@@ -59,7 +70,7 @@ for g in trot walk; do
       --initialize_from "$(clean $g)" --headless --output "$(seg1 $g)" || exit 1
   fi
   if [ ! -f "$(ck $g)" ]; then
-    rm -rf "$(seg2 $g)"
+    fresh "$(seg2 $g)"
     wait_for_ram
     run push_train2_$g $P scripts/narrow_specialist_push_experiment.py train --gait $g --perturbation \
       --initialize_from "$(seg1 $g)/$FINAL" --headless --output "$(seg2 $g)" || exit 1
