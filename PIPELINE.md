@@ -9,8 +9,9 @@ The runnable version is `scripts/pipelines/specialist_pipeline.sh`.
 One trot and one walk policy for the Unitree Go2 on flat ground, each commanded
 by forward speed, duty factor, full stance width, gait period and gait. Each
 policy is evaluated for command fidelity, periodicity, energetic cost and
-robustness across the full commanded range, and a
-duty-factor selector is fit on those measurements.
+robustness across the full commanded range. A duty-factor selector network,
+fit on success under disturbance, chooses the duty factor for every speed,
+period and stance width.
 
 ## Commanded domain
 
@@ -32,18 +33,19 @@ swing ticks. Commands change only at gait-cycle boundaries.
 | # | Stage | Script | Key settings |
 |---|---|---|---|
 | 1 | Training | `scripts/narrow_specialist_experiment.py train --gait G` | 3,072 envs, 1,800 PPO updates, seed 5, 10% grounded starts |
-| 2 | Command fidelity | `scripts/evaluate_policy.py --task narrow_specialist` | trot 0.36/0.48/0.54 s, walk 0.40/0.48/0.54 s, all widths and evaluated duty factors, 64 held-out trials, 0.30 m/s |
+| 2 | Command fidelity | `scripts/evaluate_policy.py --task narrow_specialist` | trot 0.36/0.40/0.48/0.54 s, walk 0.40/0.48/0.54 s, all widths and evaluated duty factors, 64 held-out trials, 0.30 m/s |
 | 3 | Duty-contrast check | `scripts/narrow_fidelity_gate.py --criterion contrast` | recorded for every fidelity run |
-| 4 | Robustness | `scripts/evaluate_policy.py --task narrow_specialist --perturbation` | trot 0.36/0.48/0.54 s, walk 0.40/0.48/0.54 s, all widths and evaluated duty factors, 64 held-out trials under random base disturbances up to 25 N, 0.30 m/s |
-| 4b | Robustness, stronger disturbance | same, `--perturbation_max_force 50 --perturbation_max_torque 6` | for a gait whose 0.20–0.30 m cells all reach 95% success at 25 N, stage 4 repeated with disturbances up to 50 N |
+| 4 | Robustness | `scripts/evaluate_policy.py --task narrow_specialist --perturbation` | every speed (0.25/0.30/0.35/0.40 m/s) and every period of stage 2, all widths and evaluated duty factors, 64 held-out trials under random base disturbances up to 25 N |
+| 4b | Robustness, stronger disturbance | same, `--perturbation_max_force 50 --perturbation_max_torque 6` | for a gait whose 0.20–0.30 m cells all reach 95% success at 25 N and 0.30 m/s, its 0.30 m/s runs repeated with disturbances up to 50 N |
 | 5 | Period sweep | `scripts/collect_policy_surfaces.py --task narrow_specialist --period-sweep` | trot 0.36/0.40/0.48/0.54 s, walk 0.40/0.48/0.54 s, 4 speeds, 6 widths, feasible evaluated duty factors, 32 matched trials |
-| 6 | Selector | `scripts/fit_unified_duty_selector.py`, then `collect_policy_surfaces.py --selector-checkpoint`, then `scripts/validate_unified_selector.py` | fit on both sweeps, fresh-seed validation per gait, promotion |
+| 6 | Selector network | `scripts/fit_robust_duty_selector.py`; `scripts/evaluate_policy.py --perturbation --split test` on the selections; `scripts/validate_robust_duty_selector.py` | labels from stage 4, fit, fresh-seed validation under the same disturbances, promotion |
 | 7 | Figures | `scripts/make_narrow_paper_figures.py` | five paper figures, each with its data table (below) |
-| 8 | Export | shell step | per-trial CSVs, robustness summaries, policy provenance, duty-contrast report and the paper figures into `paper_data/`; the selector once promoted |
+| 8 | Export | shell step | per-trial CSVs, robustness summaries, policy provenance, duty-contrast report, selector fit, validation and promotion, and the paper figures into `paper_data/` |
 
-Trainings run one at a time. Evaluations (stages 2, 4, 4b, 5 and the selector
-validations) run trot and walk side by side. Each is an independent process
-with its own seeds, so this changes only wall-clock time.
+Trainings run one at a time. Stages 2 and 5 run trot and walk side by side, and
+the runs of stage 4 and of the selector validation share two workers. Each
+evaluation is an independent process with its own seeds, so this changes only
+wall-clock time.
 
 ### Paper figures
 
@@ -51,33 +53,13 @@ with its own seeds, so this changes only wall-clock time.
 |---|---|
 | 1 | Periodicity (cycle RMS, median and interquartile band) against realized duty factor, trot and walk, one panel per stance width |
 | 2 | Positive mechanical CoT against realized duty factor, trot and walk, one panel per stance width |
-| 3 | Robustness: success rate against stance width, one line per commanded duty factor, per gait |
+| 3 | Robustness: success rate against stance width at 0.30 m/s, one line per commanded duty factor, per gait |
 | 4 | Realized duty factor by stance width and commanded duty factor, per gait |
-| 5 | Optimal duty factor against stance width, trot and walk: the duty factor with the lowest CoT divided by success rate under disturbance, with 95% bootstrap intervals |
+| 5 | Duty factor chosen by the selector network against stance width, trot and walk: mean and interquartile range over the network's speed and period contexts |
 
 Every figure pools the periods at which every duty factor of the gait was run.
 CoT uses every trial that completed without a failure and with a finite positive
 value.
-
-### Optimal duty factor
-
-Figure 5 weighs efficiency against robustness. For each gait and stance width,
-each duty factor is scored by its undisturbed CoT (period sweep at 0.30 m/s,
-the robustness speed) divided by its success rate under disturbance (stage 4),
-both pooled over the same periods, and the lowest score is optimal. The score is
-the expected energy per successfully completed traversal, so a failed traversal
-costs one traversal's energy. CoT is therefore a mean: the mean of each
-period's trials, averaged over periods with equal weight. A duty factor is a
-candidate only if it succeeds at least once and has completed undisturbed
-trials at every pooled period; a width without candidates has no optimum. The
-interval is the 2.5th–97.5th percentile of the optimum over 1,000 resamples of
-the trials within every period and duty factor.
-
-Dividing by success rate sets the weight between energy and success by what the
-score means, one traversal's energy per failure, instead of by a tuned
-parameter. A subtracted term, success minus a weighted CoT increase, needs a
-tuned weight, and a single weight cannot suit both near-zero success at narrow
-stance and near-full success at wide stance.
 
 ### Training details
 
@@ -104,18 +86,31 @@ Random world-frame base force up to 25 N and torque up to 3 N m, held
 0.10–0.40 s at a time, ramping from 10% to 100% of that bound over the first
 10 s of each episode. The stronger level doubles both bounds.
 
-### Selector
+### Selector network
 
-For each context of stance width, speed, period and gait, the label is the
-candidate duty factor with the lowest median positive mechanical cost of
-transport among candidates passing at least 90% of the compliance and
-finite-energy checks. Candidates are the evaluated duty factors, every 0.05 for
-both gaits, read from the sweep manifest. The classifier is masked to the gait's
-candidates that are feasible at that period. A selector is promoted only if, on
-fresh seeds, every context reaches at least 90% compliance and 90% finite-energy
-compliance, with median realized duty within 0.05 of the selection.
+**Labels.** A context is a gait, speed, period and stance width of the stage 4
+runs. Its label is the lowest duty factor whose success rate under disturbance
+is at least 90% of the best success rate any duty factor reaches in that
+context. A context where no duty factor succeeds has no label, and the selector
+abstains there. Each label carries a 95% interval from 100,000 binomial
+resamples of the context's trials.
 
-The selector's width domain is read from the sweep, so it covers 0.05–0.30 m.
+**Network.** A classifier over the evaluated duty factors with inputs stance
+width, speed, period and gait, two hidden layers of 32 units (ELU). Its output
+is masked to the gait's duty factors that are feasible at the period, and it
+must reproduce every label exactly.
+
+**Validation.** Every selection is run again under the same disturbances on the
+held-out test split, 64 trials per context. A context fails when its fresh
+success rate is significantly below 90% of the best success rate in its
+labelling runs: one-sided exact binomial test at a family-wise 5%, Bonferroni
+corrected over contexts. The selector is promoted when no context fails.
+
+Taking the lowest duty factor that keeps nearly all of the achievable robustness
+selects the least conservative gait that is still robust. The share is taken of
+the best rate in each context, not a fixed success level, so contexts where
+every duty factor succeeds only rarely still get a label. Energetic cost does
+not enter the selection.
 
 ## Design decisions
 
@@ -135,9 +130,12 @@ The selector's width domain is read from the sweep, so it covers 0.05–0.30 m.
 - **Robustness is measured under disturbance.** Without disturbance every
   width and duty factor completes its trials, so success cannot separate duty
   factors. Random base disturbances make success report robustness against duty
-  factor for each width and period. Where the wider stances reach full success
-  at every duty factor, a second level with twice the force and torque keeps
-  them informative.
+  factor for each width, speed and period. Where the wider stances reach full
+  success at every duty factor, a second level with twice the force and torque
+  keeps them informative.
+- **The selector is chosen by robustness.** Its labels and its validation both
+  come from success under the same disturbances, over the full speed, period and
+  width grid the network covers.
 - **Duty factors every 0.05.** Trot and walk are evaluated on the same duty
   step, so trends and selector choices have the same resolution for both gaits.
 - **No single fixed period.** Every stage spans the gait's periods. The period
@@ -161,11 +159,13 @@ The selector's width domain is read from the sweep, so it covers 0.05–0.30 m.
 | `results/narrow_specialist_{trot,walk}_seed5_3072_<tag>/` | checkpoints used for every evaluation |
 | `results/validation_narrow_<gait>_v030_p<period>_<tag>/` | fidelity archives, tables, plots |
 | `results/<tag>_fidelity_gate.json` | duty-contrast report, including where in the gait phase contact deviates |
-| `results/push_robustness_narrow_<gait>_v030_p<period>[_f50]_<tag>/` | pushed-trial archives and `perturbation_summary.json`, 25 N and 50 N levels |
+| `results/push_robustness_narrow_<gait>_v<speed>_p<period>[_f50]_<tag>/` | disturbance-trial archives and `perturbation_summary.json`; speed written as `v025`–`v040`; 25 N and 50 N levels |
 | `results/narrow_surfaces_sweep_<gait>_<tag>/grid/` | period-sweep archives and `surface_trials.csv` |
-| `results/narrow_selector_<tag>/`, `..._validation_<gait>_<tag>/`, `..._promoted_<tag>/` | selector fit, fresh validation and validated checkpoint |
+| `results/narrow_robust_selector_<tag>/` | selector fit: success of every candidate, labels with intervals, contexts without success, predictions, checkpoint |
+| `results/narrow_robust_selector_validation_<gait>_v<speed>_p<period>_<tag>/` | fresh-seed disturbance runs of the selections |
+| `results/narrow_robust_selector_promoted_<tag>/` | per-context validation summary, report, validated checkpoint |
 | `PAPER_GRAPHS/narrow_specialist/paper_figures/` | the five paper figures with their tables |
-| `paper_data/specialist_<tag>/` | shareable export: per-trial CSVs, robustness summaries (`trials/robustness_<gait>_v030_p<period>.json`), policy provenance, duty-contrast report, paper figures |
+| `paper_data/specialist_<tag>/` | shareable export: per-trial CSVs, robustness summaries (`trials/robustness_<gait>_v<speed>_p<period>.json`), selector validation runs (`trials/selector_validation_<gait>_v<speed>_p<period>.json`), `selector_fit/`, `selector_promoted/`, policy provenance, duty-contrast report, paper figures |
 | `results/<tag>.status` | one line per finished stage |
 
 `results/` and `PAPER_GRAPHS/` are not tracked. `paper_data/` is.
@@ -186,7 +186,8 @@ tail -f results/narrow_20260914.status
 Set `TAG` to start a separate run, `PYTHON_BIN` if the Isaac Lab Python is
 elsewhere, and `REPO_ROOT` when running a copy of the script from another
 directory. The script is resumable: completed stages are skipped, and a
-training stage without its final checkpoint is retrained from the start.
+training stage without its final checkpoint is retrained from the start. A new
+selector fit discards the previous selector validation runs.
 
 Evaluation accepts a checkpoint only if the training source files
 (`NARROW_TRAINING_SOURCE_FILES` in `narrow_specialist.py`) still match the hash
@@ -199,7 +200,9 @@ recorded at training time, so leave them unchanged while a run is in progress.
 | `source/beam_walking/beam_walking/experiment/narrow_specialist.py` | command ranges, training anchors, sampler, lineage |
 | `source/beam_walking/beam_walking/experiment/narrow_specialist_task.py` | environment config: self-collision, placement tolerance |
 | `scripts/narrow_specialist_surface_data.py` | sweep definitions, evaluated duty factors, checkpoint checks for the collector |
-| `source/beam_walking/beam_walking/experiment/unified_duty_selector.py` | selector model, candidate levels, labels, validation evidence |
+| `source/beam_walking/beam_walking/experiment/unified_duty_selector.py` | selector classifier, candidate levels, feasibility mask |
+| `scripts/fit_robust_duty_selector.py` | selector labels and intervals from the robustness runs, fit |
+| `scripts/validate_robust_duty_selector.py` | validation run plan, fresh-seed test, promotion |
 | `scripts/make_narrow_paper_figures.py` | the five paper figures and their tables |
 
 ## Limitations
@@ -208,7 +211,7 @@ recorded at training time, so leave them unchanged while a run is in progress.
   validated against hardware.
 - Energy is positive mechanical joint work per distance. It omits motor
   heating, so it understates the cost of high-torque postures such as wide stance.
-- Fidelity and robustness runs use 0.30 m/s. The period sweep covers the
-  other speeds.
+- Fidelity runs use 0.30 m/s. The robustness runs and the period sweep cover all
+  four speeds.
 - Results are simulation on flat ground with commanded stance width; there is no
   physical narrow support.

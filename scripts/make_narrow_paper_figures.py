@@ -9,9 +9,9 @@
      disturbance level
   4  realized duty factor by stance width and commanded duty factor, trot and
      walk panels
-  5  optimal duty factor against stance width: the duty factor minimizing cost of
-     transport divided by success rate under disturbance, trot and walk on one
-     axis, with bootstrap 95% intervals
+  5  the duty-factor selector network's choice against stance width: mean and
+     interquartile range over its speed and period contexts, trot and walk on one
+     axis
 
 Every figure pools the periods at which every duty factor of the gait was run, so
 each duty factor averages the same periods (trot 0.75 needs 0.40 s or longer).
@@ -76,12 +76,13 @@ def wilson(s, n, z=1.96):
 
 
 def balanced_periods(pairs):
-    """Periods at which every duty factor of the gait was run."""
+    """Periods at which every condition (width, duty factor, ...) of the gait was run, from
+    (period, condition) pairs, so pooling never mixes periods with different grids."""
     by_period = defaultdict(set)
-    for period, duty in pairs:
-        by_period[period].add(duty)
-    duties = set().union(*by_period.values())
-    return sorted(p for p, d in by_period.items() if d == duties)
+    for period, condition in pairs:
+        by_period[period].add(condition)
+    conditions = set().union(*by_period.values())
+    return sorted(p for p, c in by_period.items() if c == conditions)
 
 
 def runs(results, prefix, suffix):
@@ -106,7 +107,8 @@ def quartiles(values):
 def load_sweep(results, tag, gait):
     path = results / f"narrow_surfaces_sweep_{gait}_{tag}/grid/surface_trials.csv"
     rows = list(csv.DictReader(path.open()))
-    keep = balanced_periods({(round(float(r["period"]), 2), round(float(r["command_df"]), 3)) for r in rows})
+    keep = balanced_periods({(round(float(r["period"]), 2), (round(float(r["speed"]), 2), round(float(r["step_width"]), 2),
+                                                             round(float(r["command_df"]), 3))) for r in rows})
     return [r for r in rows if round(float(r["period"]), 2) in keep], keep
 
 
@@ -209,7 +211,8 @@ def figure_push(results, tag, out):
         if not levels[25]:
             continue
         # Both push levels pool the periods balanced at the training push level.
-        keep = balanced_periods({(p, round(c["df"], 3)) for p, cs in levels[25].items() for c in cs})
+        keep = balanced_periods({(p, (round(c["step_width"], 2), round(c["df"], 3)))
+                                 for p, cs in levels[25].items() for c in cs})
         for force, summaries in levels.items():
             if not keep or any(p not in summaries for p in keep):
                 continue
@@ -265,7 +268,8 @@ def figure_realized_duty(results, tag, out):
                      if (d / "summary.csv").exists()}
         if not summaries:
             continue
-        keep = balanced_periods({(p, round(float(r["command_df"]), 3)) for p, rs in summaries.items() for r in rs})
+        keep = balanced_periods({(p, (round(float(r["step_width"]), 2), round(float(r["command_df"]), 3)))
+                                 for p, rs in summaries.items() for r in rs})
         cells = defaultdict(list)
         for p in keep:
             for r in summaries[p]:
@@ -293,83 +297,49 @@ def figure_realized_duty(results, tag, out):
     save(fig, out, "fig4_realized_duty_factor_by_width", table)
 
 
-ROBUSTNESS_SPEED = .30      # the robustness runs (v030) command 0.30 m/s
-ROBUSTNESS_WEIGHT = 1.      # exponent on success rate; 1 charges a failed traversal one traversal's energy
-BOOTSTRAP = 1000
-
-
-def optimal_duty(stats):
-    """stats: duty -> (successes, trials, CoT). Duty with the lowest CoT / success rate^ROBUSTNESS_WEIGHT;
-    None when no duty factor succeeds."""
-    scored = [(cot / (s / n) ** ROBUSTNESS_WEIGHT, duty) for duty, (s, n, cot) in stats.items() if s > 0]
-    return min(scored)[1] if scored else None
-
-
-def figure_optimal_duty(results, tag, out):
-    """Per gait and stance width, the duty factor minimizing undisturbed CoT (period sweep at the
-    robustness speed) divided by success rate under disturbance, pooled over the periods at which
-    every duty factor ran. CoT is the mean over those periods of each period's mean, since the score
-    is an expected energy. The interval resamples trials within each period and duty factor."""
-    rng = np.random.default_rng(0)
+def figure_selector(results, tag, out):
+    """The selector network's duty factor for each of its speed and period contexts against stance
+    width, per gait, over the periods at which every duty factor ran: mean and interquartile range
+    of the contexts at each width. Widths where no context has any success have no selection."""
+    fit = results / f"narrow_robust_selector_{tag}"
+    predictions = list(csv.DictReader((fit / "selector_predictions.csv").open()))
+    candidates = list(csv.DictReader((fit / "candidate_success.csv").open()))
+    rejected = (list(csv.DictReader((fit / "rejected_contexts.csv").open()))
+                if (fit / "rejected_contexts.csv").exists() else [])
+    report = results / f"narrow_robust_selector_promoted_{tag}/validation_report.json"
+    validated = json.loads(report.read_text())["all_contexts_passed"] if report.exists() else ""
     table, curves = [], {}
     for gait in GAITS:
-        summaries = {p: list(json.loads((d / "perturbation_summary.json").read_text())["conditions"].values())
-                     for p, d in runs(results, f"push_robustness_narrow_{gait}_v030_", f"_{tag}").items()
-                     if (d / "perturbation_summary.json").exists()}
-        if not summaries:
+        grid = [r for r in candidates if r["gait"] == gait]
+        if not grid:
             continue
-        keep = balanced_periods({(p, round(c["df"], 3)) for p, cs in summaries.items() for c in cs})
-        success = defaultdict(list)     # (width, duty) -> [(successes, trials)], one entry per period
-        for p in keep:
-            for c in summaries[p]:
-                if c["trials"]:
-                    success[(round(c["step_width"], 2), round(c["df"], 3))].append((c["success"], c["trials"]))
-        swept, cot = set(), defaultdict(list)     # cot: (period, width, duty) -> CoT per completed trial
-        for r in csv.DictReader((results / f"narrow_surfaces_sweep_{gait}_{tag}/grid/surface_trials.csv").open()):
-            key = (round(float(r["period"]), 2), round(float(r["step_width"]), 2), round(float(r["command_df"]), 3))
-            if round(float(r["speed"]), 2) != ROBUSTNESS_SPEED or key[0] not in keep:
-                continue
-            swept.add(key)
-            c = r["positive_mechanical_cot"]
-            if r["any_failure"] not in ("1", "True") and c and math.isfinite(float(c)) and float(c) > 0:
-                cot[key].append(float(c))
-        unswept = sorted({(p, w, d) for w, d in success for p in keep} - swept)
-        if unswept:
-            raise ValueError(f"{gait}: robustness cells missing from the period sweep: {unswept}")
+        keep = balanced_periods({(round(float(r["period"]), 2), (round(float(r["speed"]), 2),
+                                  round(float(r["step_width"]), 2), round(float(r["command_df"]), 3)))
+                                 for r in grid})
+        speeds = sorted({round(float(r["speed"]), 2) for r in grid})
+        at = lambda rows, w: [r for r in rows if r["gait"] == gait and round(float(r["period"]), 2) in keep
+                              and round(float(r["step_width"]), 2) == w]
         curves[gait] = {}
-        for w in sorted({w for w, _ in success}):
-            duties = sorted(d for (wi, d) in success if wi == w)
-            counts = {d: (sum(k for k, _ in success[(w, d)]), sum(n for _, n in success[(w, d)])) for d in duties}
-            # a duty factor with no completed undisturbed trial in some period has no CoT and is not a candidate
-            priced = [d for d in duties if all(cot[(p, w, d)] for p in keep)]
-            stats = {d: counts[d] + (float(np.mean([np.mean(cot[(p, w, d)]) for p in keep])),) for d in priced}
-            chosen = optimal_duty(stats)
-            draws = []
-            for _ in range(BOOTSTRAP):
-                draws.append(optimal_duty({d: (sum(int(rng.binomial(n, k / n)) for k, n in success[(w, d)]),
-                                               stats[d][1],
-                                               float(np.mean([rng.choice(cot[(p, w, d)], len(cot[(p, w, d)])).mean()
-                                                              for p in keep])))
-                                           for d in priced}))
-            draws = [x for x in draws if x is not None]
-            low, high = (float(q) for q in np.quantile(draws, [.025, .975], method="inverted_cdf")) \
-                if chosen is not None and draws else (None, None)
-            curves[gait][w] = (chosen, low, high)
-            for d in duties:
-                s, n = counts[d]
-                c = stats[d][2] if d in stats else None
-                table.append({"gait": gait, "step_width": w, "command_df": d, "success": s, "trials": n,
-                              "success_rate": s / n, "cot_mean": "" if c is None else c,
-                              "cot_trials": sum(len(cot[(p, w, d)]) for p in keep),
-                              "cot_per_success": c / (s / n) ** ROBUSTNESS_WEIGHT if s and c is not None else "",
-                              "optimal": int(d == chosen),
-                              "optimal_df": "" if chosen is None else chosen,
-                              "optimal_df_ci_low": "" if low is None else low,
-                              "optimal_df_ci_high": "" if high is None else high,
-                              "periods": " ".join(f"{p:g}" for p in keep)})
+        for w in sorted({round(float(r["step_width"]), 2) for r in grid}):
+            chosen = sorted(float(r["selected_df"]) for r in at(predictions, w))
+            if chosen:
+                q25, q75 = (float(q) for q in np.quantile(chosen, [.25, .75], method="inverted_cdf"))
+                curves[gait][w] = (float(np.mean(chosen)), q25, q75)
+            else:
+                curves[gait][w] = (None, None, None)
+            mean, q25, q75 = curves[gait][w]
+            table.append({"gait": gait, "step_width": w, "contexts": len(chosen),
+                          "contexts_without_success": len(at(rejected, w)),
+                          "selected_df_mean": "" if mean is None else mean,
+                          "selected_df_q25": "" if q25 is None else q25,
+                          "selected_df_q75": "" if q75 is None else q75,
+                          "selections": " ".join(f"{d:g}x{chosen.count(d)}" for d in sorted(set(chosen))),
+                          "speeds": " ".join(f"{v:g}" for v in speeds),
+                          "periods": " ".join(f"{p:g}" for p in keep),
+                          "selector_validated": validated})
     if not table:
-        raise FileNotFoundError("no robustness data")
-    tested = sorted({t["command_df"] for t in table})
+        raise FileNotFoundError("no selector fit")
+    tested = sorted({round(float(r["command_df"]), 3) for r in candidates})
     ceiling = tested[-1] + .07      # widths where no duty factor succeeds sit above the highest duty factor
     fig, ax = plt.subplots(figsize=(4.8, 3.6))
     for j, (gait, points) in enumerate(curves.items()):
@@ -391,12 +361,12 @@ def figure_optimal_duty(results, tag, out):
     ax.set_ylim(tested[0] - .03, ceiling + .03)
     ax.spines["left"].set_bounds(tested[0] - .03, tested[-1] + .02)
     ax.set_xlabel("Stance width (m)", color=TEXT, fontsize=9)
-    ax.set_ylabel("Duty factor minimizing CoT / success rate", color=TEXT, fontsize=9)
+    ax.set_ylabel("Duty factor chosen by the selector", color=TEXT, fontsize=9)
     legend = ax.legend(frameon=True, facecolor="#ffffff", edgecolor="none", framealpha=1, fontsize=8,
                        labelcolor=TEXT, loc="upper right")
     legend.set_zorder(5)
     style(ax)
-    save(fig, out, "fig5_optimal_duty_factor_vs_stance_width", table)
+    save(fig, out, "fig5_selector_duty_factor_vs_stance_width", table)
 
 
 def main():
@@ -409,7 +379,7 @@ def main():
     for stale in args.output.glob("fig[0-9]_*"):
         stale.unlink()
     missing = []
-    for figure in (figure_periodicity, figure_cot, figure_push, figure_realized_duty, figure_optimal_duty):
+    for figure in (figure_periodicity, figure_cot, figure_push, figure_realized_duty, figure_selector):
         try:
             figure(args.results, args.tag, args.output)
         except Exception as error:  # one figure's failure must not stop the others

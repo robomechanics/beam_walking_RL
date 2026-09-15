@@ -4,9 +4,10 @@
 #   1  train the trot and walk specialists
 #   2  command fidelity at every period
 #   3  duty-contrast check over all fidelity runs (recorded, never stops the run)
-#   4  push robustness: success under pushes at every period, width and duty
+#   4  robustness: success under disturbances at every speed, period, width and duty
 #   5  period sweeps, both gaits
-#   6  selector fit, validation per gait, promotion
+#   6  duty-factor selector network from success under disturbance, fresh-seed
+#      validation, promotion
 #   7  paper figures
 #   8  export CSVs and the paper figures into paper_data/specialist_<tag>
 # Documented in PIPELINE.md at the repo root. Resumable: completed stages are
@@ -29,7 +30,9 @@ wait_for_ram() { local waited=0
   while [ "$(awk '/MemAvailable/{print int($2/1024)}' /proc/meminfo)" -lt 14800 ]; do
     sync; sleep 30; waited=$((waited+30)); [ $waited -ge 1200 ] && return 0; done; }
 ck() { echo results/narrow_specialist_$1_seed5_3072_${TAG}/model_1799.pt; }
-periods_of() { [ "$1" = walk ] && echo ".40 .48 .54" || echo ".36 .48 .54"; }
+periods_of() { [ "$1" = walk ] && echo ".40 .48 .54" || echo ".36 .40 .48 .54"; }
+SPEEDS=".25 .30 .35 .40"
+v3() { awk -v s="$1" 'BEGIN { printf "%03d", s * 100 + .5 }'; }   # .30 -> 030
 # Evaluated duty factors: trot every 0.05 from 0.50 (0.75 needs a period of at
 # least 0.40 s for five swing ticks), walk 0.75-0.90.
 dfs_of() { # gait period
@@ -77,6 +80,24 @@ attempt() { # completion-file stage-name command...
   done
   return 1
 }
+# Run job lines from stdin (each a function call) on two workers. A worker claims
+# a job by creating its lock directory, so every job runs once.
+pool() { # name
+  local locks=results/.pool_${TAG}_$1 jobs a b
+  jobs=$(cat)
+  [ -z "$jobs" ] && return 0
+  rm -rf "$locks"; mkdir -p "$locks"
+  worker() { local line i=0
+    while IFS= read -r line; do
+      i=$((i+1))
+      mkdir "$locks/$i" 2>/dev/null || continue
+      eval "$line" < /dev/null   # a job must not read the remaining job lines
+    done <<< "$jobs"; }
+  worker & a=$!
+  sleep 45
+  worker & b=$!
+  wait $a $b
+  rm -rf "$locks"; }
 
 # 2. Command fidelity at every period.
 fid() { # gait period
@@ -100,41 +121,36 @@ for d in results/validation_narrow_*_${TAG}; do GATE_RUNS="$GATE_RUNS $(basename
 run fidelity_gate $P scripts/narrow_fidelity_gate.py --criterion contrast --runs $GATE_RUNS \
   --output results/${TAG}_fidelity_gate.json
 
-# 4. Push robustness: success under pushes at every period, all widths and duty
-#    factors, trot and walk side by side.
-push_dir() { # gait period force
-  local level=""; [ "$3" != 25 ] && level="_f$3"
-  printf "results/push_robustness_narrow_%s_v030_p%.2f%s_%s" "$1" "$2" "$level" "$TAG"; }
-push_robustness() { local g=$1 force=${2:-25} p out
-  for p in $(periods_of $g); do
-    out=$(push_dir $g $p $force)
-    attempt "$out/evaluation_complete.json" "push_robustness_${g}_p${p}_f${force}" \
-      $P scripts/evaluate_policy.py --task narrow_specialist --checkpoint "$(ck $g)" \
-      --gait $g --period $p --step_widths $W --dfs $(dfs_of $g $p) --perturbation \
-      --perturbation_max_force $force --perturbation_max_torque $(python3 -c "print($force * 3 / 25)") \
-      --output "$out" --headless || return 1
-  done; }
-push_robustness trot & A=$!
-sleep 45
-push_robustness walk & B=$!
-wait $A $B
+# 4. Robustness: success under random base disturbances at every speed, period,
+#    width and duty factor, on two workers. The selector's labels come from
+#    these runs; figure 3 uses 0.30 m/s.
+push_dir() { # gait speed period force
+  local level=""; [ "$4" != 25 ] && level="_f$4"
+  printf "results/push_robustness_narrow_%s_v%s_p%.2f%s_%s" "$1" "$(v3 $2)" "$3" "$level" "$TAG"; }
+robustness_job() { # gait speed period force
+  local out; out=$(push_dir $1 $2 $3 $4)
+  attempt "$out/evaluation_complete.json" "push_robustness_${1}_v$(v3 $2)_p${3}_f${4}" \
+    $P scripts/evaluate_policy.py --task narrow_specialist --checkpoint "$(ck $1)" \
+    --gait $1 --speed $2 --period $3 --step_widths $W --dfs $(dfs_of $1 $3) --perturbation \
+    --perturbation_max_force $4 --perturbation_max_torque $(python3 -c "print($4 * 3 / 25)") \
+    --output "$out" --headless; }
+for v in $SPEEDS; do for g in trot walk; do for p in $(periods_of $g); do
+  echo "robustness_job $g $v $p 25"; done; done; done | pool robustness
 
 # 4b. Where every duty factor succeeds in at least 95% of trials at 0.20-0.30 m
-#     for every period, repeat the gait's push robustness with pushes up to
-#     50 N (6 N m) so the wider stances are not at full success.
+#     for every period at 0.30 m/s, repeat that gait's 0.30 m/s robustness with
+#     disturbances up to 50 N (6 N m) so the wider stances are not at full success.
 at_ceiling() { # gait
-  python3 - "$1" $(for p in $(periods_of $1); do echo "$(push_dir $1 $p 25)/perturbation_summary.json"; done) <<'PY'
+  python3 - "$1" $(for p in $(periods_of $1); do echo "$(push_dir $1 .30 $p 25)/perturbation_summary.json"; done) <<'PY'
 import json, sys
 rates = [c["success"] / c["trials"] for path in sys.argv[2:]
          for c in json.load(open(path))["conditions"].values() if c["step_width"] >= .195]
 sys.exit(0 if rates and min(rates) >= .95 else 1)
 PY
 }
-A=""; B=""
-at_ceiling trot && { push_robustness trot 50 & A=$!; }
-[ -n "$A" ] && sleep 45
-at_ceiling walk && { push_robustness walk 50 & B=$!; }
-wait $A $B 2>/dev/null
+for g in trot walk; do
+  at_ceiling $g && for p in $(periods_of $g); do echo "robustness_job $g .30 $p 50"; done
+done | pool robustness_50n
 
 # 5. Period sweeps, trot and walk side by side.
 sweep() { local g=$1
@@ -148,28 +164,28 @@ sleep 45
 sweep walk & B=$!
 wait $A $B
 
-# 6. Selector: fit, then both validations side by side, then promotion.
-ST=results/narrow_surfaces_sweep_trot_${TAG}/grid
-SW=results/narrow_surfaces_sweep_walk_${TAG}/grid
-FIT=results/narrow_selector_${TAG}
-if [ -f $ST/SURFACE_COMPLETE ] && [ -f $SW/SURFACE_COMPLETE ]; then
-  [ -f $FIT/unified_duty_selector.pt ] || { rm -rf $FIT; run selector_fit $P scripts/fit_unified_duty_selector.py \
-    $ST/surface_trials.csv $SW/surface_trials.csv --output $FIT; }
-  if [ -f $FIT/unified_duty_selector.pt ]; then
-    validate() { local g=$1
-      attempt "results/narrow_selector_validation_${g}_${TAG}/SURFACE_COMPLETE" "selector_validation_$g" \
-        $P scripts/collect_policy_surfaces.py --task narrow_specialist --checkpoint "$(ck $g)" \
-        --gaits $g --selector-checkpoint $FIT/unified_duty_selector.pt \
-        --output results/narrow_selector_validation_${g}_${TAG} --headless
-    }
-    validate trot & A=$!
-    sleep 45
-    validate walk & B=$!
-    wait $A $B
-    run selector_promote $P scripts/validate_unified_selector.py --selector $FIT/unified_duty_selector.pt \
-      --validation results/narrow_selector_validation_trot_${TAG} results/narrow_selector_validation_walk_${TAG} \
-      --output results/narrow_selector_promoted_${TAG}
-  fi
+# 6. Duty-factor selector network. Labels come from success under disturbance at
+#    every speed, period and width (stage 4). Every selection is run again under
+#    the same disturbances on the held-out test split, then the selector is
+#    promoted. A new fit discards the previous validation runs.
+FIT=results/narrow_robust_selector_${TAG}
+PROMOTED_DIR=results/narrow_robust_selector_promoted_${TAG}
+if [ ! -f $FIT/robust_duty_selector.pt ]; then
+  rm -rf $FIT $PROMOTED_DIR results/narrow_robust_selector_validation_*_${TAG}
+  run selector_fit $P scripts/fit_robust_duty_selector.py --tag $TAG --output $FIT
+fi
+if [ -f $FIT/robust_duty_selector.pt ]; then
+  selector_validation_job() { # gait speed period widths duties (comma-separated)
+    local out; out=$(printf "results/narrow_robust_selector_validation_%s_v%s_p%.2f_%s" $1 "$(v3 $2)" $3 $TAG)
+    attempt "$out/evaluation_complete.json" "selector_validation_${1}_v$(v3 $2)_p${3}" \
+      $P scripts/evaluate_policy.py --task narrow_specialist --checkpoint "$(ck $1)" \
+      --gait $1 --speed $2 --period $3 --step_widths ${4//,/ } --dfs ${5//,/ } --perturbation \
+      --perturbation_max_force 25 --perturbation_max_torque 3 --split test --seed 1000000 \
+      --output "$out" --headless; }
+  $P scripts/validate_robust_duty_selector.py --selector $FIT/robust_duty_selector.pt --tag $TAG --print-jobs \
+    | grep '^selector_validation_job ' | pool selector_validation
+  [ -f $PROMOTED_DIR/validated_robust_duty_selector.pt ] || run selector_promote \
+    $P scripts/validate_robust_duty_selector.py --selector $FIT/robust_duty_selector.pt --tag $TAG --output $PROMOTED_DIR
 fi
 
 # 7. Paper figures: every figure pools the periods at which every duty factor ran.
@@ -181,10 +197,8 @@ echo "figures_done $(date -u +%FT%TZ)" >> $S
 # 8. Export.
 OUT=paper_data/specialist_${TAG}
 mkdir -p $OUT/trials $OUT/policies $OUT/docs
-PROMOTED=results/narrow_selector_promoted_${TAG}/validated_unified_duty_selector.pt
 for g in trot walk; do
   cp results/narrow_surfaces_sweep_${g}_${TAG}/grid/surface_trials.csv $OUT/trials/grid_speed_width_duty_BY_PERIOD_${g}.csv 2>/dev/null
-  [ -f $PROMOTED ] && cp results/narrow_selector_validation_${g}_${TAG}/surface_trials.csv $OUT/trials/selector_validation_${g}.csv 2>/dev/null
 done
 for d in results/validation_narrow_*_${TAG}; do
   n=$(basename $d | sed "s/validation_narrow_//;s/_${TAG}//")
@@ -199,12 +213,16 @@ for d in results/narrow_specialist_*_seed5_3072_${TAG}; do
   cp $d/provenance.json $d/agent.yaml $d/env.yaml $OUT/policies/$n/ 2>/dev/null
   sha256sum $d/model_1799.pt | sed "s|$d/||" > $OUT/policies/$n/model_1799.sha256
 done
-# The selector is exported only once promoted.
-rm -rf $OUT/selector_fit $OUT/selector_promoted
-if [ -f $PROMOTED ]; then
-  cp -r $FIT $OUT/selector_fit
-  cp -r results/narrow_selector_promoted_${TAG} $OUT/selector_promoted
-fi
+# The selector fit (labels and selections behind figure 5), its fresh-seed
+# validation runs, and the promotion report.
+rm -rf $OUT/selector_fit $OUT/selector_promoted $OUT/trials/selector_validation_*
+[ -f $FIT/robust_duty_selector.pt ] && cp -r $FIT $OUT/selector_fit
+[ -d $PROMOTED_DIR ] && cp -r $PROMOTED_DIR $OUT/selector_promoted
+for d in results/narrow_robust_selector_validation_*_${TAG}; do
+  [ -f $d/perturbation_summary.json ] || continue
+  n=$(basename $d | sed "s/narrow_robust_selector_validation_//;s/_${TAG}//")
+  cp $d/perturbation_summary.json $OUT/trials/selector_validation_${n}.json
+done
 cp results/${TAG}_fidelity_gate.json $OUT/docs/ 2>/dev/null
 rm -rf $OUT/figures; cp -r $FIG $OUT/figures
 echo "narrow_pipeline_done $(date -u +%FT%TZ)" >> $S
